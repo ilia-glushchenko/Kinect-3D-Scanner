@@ -102,9 +102,11 @@ void ScannerWidget::initializeDebugInterface()
 		reconstructionInterface, SLOT(slot_set_use_statistical_outlier_removal_filter(int)));
 	connect(mlsFilterCheck, SIGNAL(stateChanged(int)),
 		reconstructionInterface, SLOT(slot_set_use_moving_least_squares_filter(int)));
-	reconstructCheck->setChecked(true);
-	undistrtionCheck->setChecked(true);
-	bilateralFilterCheck->setChecked(true);
+	reconstructCheck->setChecked(settings->value("FINAL_SETTINGS/PERFORM_RECONSTRUCTION").toBool());
+	undistrtionCheck->setChecked(settings->value("CALIBRATION/ENABLE_IN_FINAL").toBool());
+	bilateralFilterCheck->setChecked(settings->value("OPENCV_BILATERAL_FILTER_SETTINGS/ENABLE_IN_FINAL").toBool());
+	statFilterCheck->setChecked(settings->value("STATISTICAL_OUTLIER_REMOVAL_FILTER_SETTINGS/ENABLE_IN_FINAL").toBool());
+	mlsFilterCheck->setChecked(settings->value("MOVING_LEAST_SQUARES_FILTER_SETTINGS/ENABLE_IN_FINAL").toBool());
 
 	//------------------------------------------------
 	vBoxLayout = new QVBoxLayout();
@@ -219,7 +221,6 @@ void ScannerWidget::slot_open_project()
 		}
 	}
 }
-
 
 void ScannerWidget::slot_initialize()
 {

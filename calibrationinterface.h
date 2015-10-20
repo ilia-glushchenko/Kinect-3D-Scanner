@@ -12,12 +12,12 @@
 #include "pclio.h"
 #include "types.h"
 
-class CalibrationInterface : public QObject
+class CalibrationInterface : public ScannerBase
 {
 	Q_OBJECT
 
 public:
-	CalibrationInterface(QObject *parent);
+	CalibrationInterface(QObject *parent, QSettings* parent_settings);
 
 	void calibrate();
 	void calibrate(PcdPtrVector input_pcd_vector);
@@ -27,7 +27,6 @@ public:
 	void loadCalibrationData();
 
 private:
-	QSettings* settings;
 	PcdPtrVector raw_pcd_data_vector;
 	PcdPtrVector udistort_pcd_vector;
 	PcdPtrVector calib_plane_vector;

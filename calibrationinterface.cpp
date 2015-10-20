@@ -3,10 +3,10 @@
 #define WIDTH  640 
 #define HEIGHT 480 
 
-CalibrationInterface::CalibrationInterface(QObject *parent)
+CalibrationInterface::CalibrationInterface(QObject *parent, QSettings* parent_settings)
+	:ScannerBase(parent, parent_settings)
 {
-	setParent(parent);
-	settings = new QSettings("scaner.ini", QSettings::IniFormat, this);
+
 }
 
 //####################################################################

@@ -94,22 +94,42 @@ void ReconstructionInterface::filter_point_cloud(Frame& frame)
 
 	//Bilateral
 	if (use_bilateral_filter)
-		PcdFilters::apply_bilateral_filter(frame.pointCloudPtr);
-
+	{
+		int d = settings->value("OPENCV_BILATERAL_FILTER_SETTINGS/D").toInt();
+		double sigma_color = settings->value("OPENCV_BILATERAL_FILTER_SETTINGS/SIGMA_COLOR").toDouble();
+		double sigma_space = settings->value("OPENCV_BILATERAL_FILTER_SETTINGS/SIGMA_SPACE").toDouble();
+		PcdFilters::apply_bilateral_filter(frame.pointCloudPtr, d, sigma_color, sigma_space);
+	}
+		
 	vector<int> indexes_vector;
 	pcl::removeNaNFromPointCloud(*frame.pointCloudPtr.get(), *dest_point_cloud_ptr.get(), indexes_vector);
 	frame.pointCloudIndexes = indexes_vector;
 
 	//Statistic reduction
 	if (use_statistical_outlier_removal_filter) {
-		PcdFilters::apply_statistical_outlier_removal_filter(dest_point_cloud_ptr, frame.pointCloudPtr);
-		pcl::copyPointCloud(*frame.pointCloudPtr.get(), *dest_point_cloud_ptr.get());
+		int   meanK		      = settings->value("STATISTICAL_OUTLIER_REMOVAL_FILTER_SETTINGS/MEAN_K").toInt();
+		float stddevMulThresh = settings->value("STATISTICAL_OUTLIER_REMOVAL_FILTER_SETTINGS/MUL_THRESH").toFloat();
+		PcdFilters::apply_statistical_outlier_removal_filter(dest_point_cloud_ptr, frame.pointCloudPtr, meanK, stddevMulThresh);
+		
+		if (settings->value("STATISTICAL_OUTLIER_REMOVAL_FILTER_SETTINGS/ENABLE_LOG").toBool()) {
+			qDebug() << "Statistical removal: from "
+					 << dest_point_cloud_ptr->size()
+					 << "to"
+					 << frame.pointCloudPtr->size();
+		}
+
+		pcl::copyPointCloud(*frame.pointCloudPtr, *dest_point_cloud_ptr);
 	}
 
 	//Smooth
-	if (use_moving_least_squares_filter)
-		PcdFilters::apply_moving_least_squares_filter(dest_point_cloud_ptr);
-
+	if (use_moving_least_squares_filter) {
+		double sqrGaussParam = settings->value("MOVING_LEAST_SQUARES_FILTER_SETTINGS/SQR_GAUSS_PARAM").toDouble();
+		double searchRadius = settings->value("MOVING_LEAST_SQUARES_FILTER_SETTINGS/SEARCH_RADIUS").toDouble();
+		pcl::PointCloud<pcl::PointNormal>::Ptr smoothed_cloud(new pcl::PointCloud<pcl::PointNormal>);
+		PcdFilters::apply_moving_least_squares_filter(dest_point_cloud_ptr, smoothed_cloud, sqrGaussParam, searchRadius);
+		pcl::copyPointCloud(*smoothed_cloud, *dest_point_cloud_ptr);
+	}
+		
 	pcl::copyPointCloud(*dest_point_cloud_ptr.get(), *frame.pointCloudPtr.get());
 }
 
@@ -117,7 +137,7 @@ void ReconstructionInterface::filter_all_point_clouds(Frames& frames)
 {
 	if (use_undistortion)
 	{
-		CalibrationInterface calibrationInterface(this);
+		CalibrationInterface calibrationInterface(this, settings);
 		calibrationInterface.loadCalibrationData();
 		calibrationInterface.calibrate();
 		calibrationInterface.undistort(frames);
@@ -137,12 +157,12 @@ void ReconstructionInterface::remove_nan_from_all_clouds(Frames& frames)
 	qDebug() << "Removing NaN's from point clouds...";
 	for (int i = 0; i < frames.size(); i++)
 	{
-		frames[i].pointCloudPtr.get()->is_dense = false;
+		frames[i].pointCloudPtr->is_dense = false;
 
 		PcdPtr tmp_point_cloud_ptr(new Pcd);
 		vector<int> indexes_vector;
-		pcl::removeNaNFromPointCloud(*frames[i].pointCloudPtr.get(), *tmp_point_cloud_ptr.get(), indexes_vector);
-		pcl::copyPointCloud(*tmp_point_cloud_ptr.get(), *frames[i].pointCloudPtr.get());
+		pcl::removeNaNFromPointCloud(*frames[i].pointCloudPtr, *tmp_point_cloud_ptr, indexes_vector);
+		pcl::copyPointCloud(*tmp_point_cloud_ptr, *frames[i].pointCloudPtr);
 
 		frames[i].pointCloudIndexes = indexes_vector;
 	}
@@ -154,27 +174,21 @@ void ReconstructionInterface::reorganize_all_point_clouds(Frames& frames)
 	qDebug() << "Reorganization all point clouds";
 	for (int i = 0; i < frames.size(); i++)
 	{
-		PcdPtr tmp_pdc_ptr(new Pcd);
-		tmp_pdc_ptr.get()->width = WIDTH;
-		tmp_pdc_ptr.get()->height = HEIGHT;
-		tmp_pdc_ptr.get()->resize(HEIGHT*WIDTH);
+		PcdPtr tmp_pcd_ptr(new Pcd);
+		tmp_pcd_ptr->resize(HEIGHT*WIDTH);
 
-		for (int y = 0; y < HEIGHT; y++)
-			for (int x = 0; x < WIDTH; x++)
-			{
-				tmp_pdc_ptr.get()->at(x, y).x = 0;
-				tmp_pdc_ptr.get()->at(x, y).y = 0;
-				tmp_pdc_ptr.get()->at(x, y).z = NAN;
-				tmp_pdc_ptr.get()->at(x, y).r = 0;
-				tmp_pdc_ptr.get()->at(x, y).g = 0;
-				tmp_pdc_ptr.get()->at(x, y).b = 0;
+		for (int y = 0; y < HEIGHT; y++) {
+			for (int x = 0; x < WIDTH; x++) {
+				tmp_pcd_ptr->at(x, y).z = NAN;
 			}
+		}
 
-		for (int j = 0; j < frames[i].pointCloudPtr.get()->size(); j++)
-			tmp_pdc_ptr.get()->points[frames[i].pointCloudIndexes[j]] = frames[i].pointCloudPtr.get()->points[j];
+		for (int j = 0; j < frames[i].pointCloudPtr->size(); j++) {
+			tmp_pcd_ptr->points[frames[i].pointCloudIndexes[j]] = frames[i].pointCloudPtr->points[j];
+		}
 
-		pcl::copyPointCloud(*tmp_pdc_ptr.get(), *frames[i].pointCloudPtr.get());
-		frames[i].pointCloudPtr.get()->is_dense = false;
+		pcl::copyPointCloud(*tmp_pcd_ptr, *frames[i].pointCloudPtr);
+		frames[i].pointCloudPtr->is_dense = false;
 	}
 	qDebug() << "Done!";
 }
