@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QSettings>
+#include <QFileInfo>
 #include <QtSerialPort/QtSerialPort>
 #include <QtSerialPort/QSerialPortInfo>
 #include <QDebug>

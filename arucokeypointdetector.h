@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QDebug>
 #include <QSettings>
+#include <QFileInfo>
 
 #include <stdio.h> //blocking aruco stdout
 

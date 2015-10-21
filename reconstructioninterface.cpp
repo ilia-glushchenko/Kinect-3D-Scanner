@@ -2,8 +2,9 @@
 
 //#######################################################
 
-ReconstructionInterface::ReconstructionInterface(QObject *parent, QSettings* parent_settings) 
-	: ScannerBase(parent, parent_settings)
+ReconstructionInterface::ReconstructionInterface(
+	QObject *parent, QSettings* parent_settings
+	) : ScannerBase(parent, parent_settings)
 {
 	volumeReconstruction = new VolumeReconstruction(this, settings);
 	pcdVizualizer = new PcdVizualizer(this, settings);
@@ -57,7 +58,8 @@ void ReconstructionInterface::read_data(
 		PcdPtr point_cloud_ptr(new Pcd);
 
 		QString pcd_filename_pattern =
-			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "\\" +
+			QFileInfo(settings->fileName()).absolutePath() + "/" +
+			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 			settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();
 		qDebug() << "Reading" << pcd_filename_pattern.arg(i);
 		PclIO::load_one_point_cloud(pcd_filename_pattern.arg(i), point_cloud_ptr);
@@ -66,7 +68,8 @@ void ReconstructionInterface::read_data(
 			continue;
 
 		QString filename_pattern =
-			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "\\" +
+			QFileInfo(settings->fileName()).absolutePath() + "/" +
+			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 			settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
 		qDebug() << "Reading" << filename_pattern.arg(i);
 		cv::Mat image = cv::imread(filename_pattern.arg(i).toStdString());
@@ -175,6 +178,8 @@ void ReconstructionInterface::reorganize_all_point_clouds(Frames& frames)
 	for (int i = 0; i < frames.size(); i++)
 	{
 		PcdPtr tmp_pcd_ptr(new Pcd);
+		tmp_pcd_ptr->width = WIDTH;
+		tmp_pcd_ptr->height = HEIGHT;
 		tmp_pcd_ptr->resize(HEIGHT*WIDTH);
 
 		for (int y = 0; y < HEIGHT; y++) {

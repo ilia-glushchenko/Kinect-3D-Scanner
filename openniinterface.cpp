@@ -38,11 +38,13 @@ void OpenNiInterface::initialize_interface()
 void OpenNiInterface::load_calibration_data()
 {
 	calib_matrix = (CvMat*)cvLoad(
-		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "\\" +
+		(QFileInfo(settings->fileName()).absolutePath() + "/" +
+		 settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
 		 settings->value("OPENNI_SETTINGS/CALIB_MATRIX_NAME").toString()).toStdString().c_str()
 	);
 	dist_coeffs = (CvMat*)cvLoad(
-		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "\\" + 
+		(QFileInfo(settings->fileName()).absolutePath() + "/" +
+		settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" + 
 		settings->value("OPENNI_SETTINGS/DIST_COEFF_NAME").toString()).toStdString().c_str()
 	);
 }
@@ -72,7 +74,8 @@ void OpenNiInterface::save_optimized_images()
 	for (int i = 0; i < worldCoordsVector.size(); i++)
 	{
 		QString pcd_image_filename_pattern =
-			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "\\" +
+			QFileInfo(settings->fileName()).absolutePath() + "/" +
+			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 			settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
 		cv::imwrite(pcd_image_filename_pattern.arg(i).toStdString(), colorImagesMatVector[i]);
 
@@ -80,7 +83,8 @@ void OpenNiInterface::save_optimized_images()
 		depth_map_to_point_cloud(i, point_cloud_ptr.get());
 
 		QString pcd_filename_pattern =
-			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "\\" +
+			QFileInfo(settings->fileName()).absolutePath() + "/" +
+			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 			settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();
 		PclIO::save_one_point_cloud(pcd_filename_pattern.arg(i), point_cloud_ptr);
 	}
@@ -135,7 +139,8 @@ void OpenNiInterface::initialize()
 
 	if (stream_from_record) {
 		QString filePath =
-			settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "\\" +
+			QFileInfo(settings->fileName()).absolutePath() + "/" +
+			settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "/" +
 			settings->value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString();
 
 		if (tools::fileExists(filePath) == false) {
@@ -298,7 +303,8 @@ void OpenNiInterface::read_frame()
 		if (record_to_pcd_data)
 		{
 			QString pcd_image_filename_pattern =
-				settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "\\" +
+				QFileInfo(settings->fileName()).absolutePath() + "/" +
+				settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 				settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
 			imwrite(pcd_image_filename_pattern.arg(depthFrame.getFrameIndex()).toStdString(), colorFrameMat);
 
@@ -312,7 +318,8 @@ void OpenNiInterface::read_frame()
 			depth_map_to_point_cloud(worldCoordsVector.size() - 1, point_cloud_ptr.get());
 
 			QString pcd_filename_pattern =
-				settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "\\" +
+				QFileInfo(settings->fileName()).absolutePath() + "/" +
+				settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 				settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();			
 			PclIO::save_one_point_cloud(pcd_filename_pattern.arg(depthFrame.getFrameIndex()), point_cloud_ptr);
 

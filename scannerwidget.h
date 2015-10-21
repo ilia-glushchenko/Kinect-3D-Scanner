@@ -67,6 +67,7 @@ private:
 	void initializeSettings();
 	void initializeReconstruction();
 
+	void initializeMainInterface();
 	void initializeOpenDialogInterface();
 	void initializeDebugInterface();
 	void initializeReleaseInterface();

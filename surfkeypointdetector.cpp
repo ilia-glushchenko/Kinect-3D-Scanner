@@ -15,7 +15,6 @@ SurfKeypointDetector::SurfKeypointDetector(
 	) 
 	: ScannerBase(parent, parent_settings)
 {
-	setParent(parent);
 	_point_cloud_ptr1 = cloud_ptr1;
 	_point_cloud_ptr2 = cloud_ptr2;
 	image1 = img1;
@@ -234,11 +233,7 @@ void SurfKeypointDetector::surf_detect_keypoints(
 	using namespace cv;
 	Mat descriptors1, descriptors2;
 
-	SurfFeatureDetector	detector(
-		settings->value(
-		"OPENCV_KEYPOINT_DETECTION_SETTINGS/MIN_HISS"
-		).toInt()
-	);
+	SurfFeatureDetector	detector(settings->value("OPENCV_KEYPOINT_DETECTION_SETTINGS/MIN_HISS").toInt());
 	SurfDescriptorExtractor extractor;
 	vector<DMatch> matches;
 	
@@ -264,10 +259,7 @@ void SurfKeypointDetector::surf_detect_keypoints(
 		matcher.match(descriptors1, descriptors2, matches);
 	}
 		
-	int y_threshold =
-		settings->value(
-			"OPENCV_KEYPOINT_DETECTION_SETTINGS/Y_AMPLITUDE_KEYPOINTS_THRESHOLD"
-		).toInt();
+	int y_threshold = settings->value("OPENCV_KEYPOINT_DETECTION_SETTINGS/Y_AMPLITUDE_KEYPOINTS_THRESHOLD").toInt();
 
 	vector<DMatch> y_thresh_matches;
 	for (int i = 0; i < matches.size(); i++)
@@ -278,10 +270,7 @@ void SurfKeypointDetector::surf_detect_keypoints(
 			y_thresh_matches.push_back(matches[i]);
 	}
 
-	double min_dist =
-		settings->value(
-			"OPENCV_KEYPOINT_DETECTION_SETTINGS/MIN_DIST_INIT"
-		).toDouble();
+	double min_dist = settings->value("OPENCV_KEYPOINT_DETECTION_SETTINGS/MIN_DIST_INIT").toDouble();
 
 	for (int i = 0; i < y_thresh_matches.size(); i++)
 	{
@@ -289,14 +278,8 @@ void SurfKeypointDetector::surf_detect_keypoints(
 		if (dist < min_dist) min_dist = dist;
 	}
 
-	double multy =
-		settings->value(
-		"OPENCV_KEYPOINT_DETECTION_SETTINGS/GOOD_KEYPOINTS_DIST_COEF"
-		).toDouble();
-	double abs_min_dist =
-		settings->value(
-		"OPENCV_KEYPOINT_DETECTION_SETTINGS/MINIMAL_GOOD_KEYPOINTS_DIST"
-		).toDouble();
+	double multy = settings->value("OPENCV_KEYPOINT_DETECTION_SETTINGS/GOOD_KEYPOINTS_DIST_COEF").toDouble();
+	double abs_min_dist = settings->value("OPENCV_KEYPOINT_DETECTION_SETTINGS/MINIMAL_GOOD_KEYPOINTS_DIST").toDouble();
 
 
 	for (int i = 0; i < y_thresh_matches.size(); i++)
@@ -332,9 +315,7 @@ void SurfKeypointDetector::surf_reject_keypoints(
 	std::vector<cv::Point2f> no_nan_after_thresh_good_keypoints1;
 	std::vector<cv::Point2f> no_nan_after_thresh_good_keypoints2;
 	std::vector<cv::DMatch>  good_matches_after_thresh_nan;
-	if (settings->value(
-		"OPENCV_KEYPOINT_DETECTION_SETTINGS/FLAT_KEYPOINT_FILTER_ENABLE"
-		).toBool())
+	if (settings->value("OPENCV_KEYPOINT_DETECTION_SETTINGS/FLAT_KEYPOINT_FILTER_ENABLE").toBool())
 	{
 		flat_area_keypoints_filter(
 			no_nan_good_keypoints1, no_nan_good_keypoints2,

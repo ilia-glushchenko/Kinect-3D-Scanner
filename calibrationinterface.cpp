@@ -320,10 +320,14 @@ void CalibrationInterface::loadCalibrationData()
 		PcdPtr point_cloud_ptr(new Pcd);
 
 		if (log)
-			qDebug() << "Reading" << settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i);
+			qDebug() << "Reading" << QFileInfo(settings->fileName()).absolutePath() + "/" +
+									 settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+									 settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i);
 
 		PclIO::load_one_point_cloud(
-			settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i),
+			(QFileInfo(settings->fileName()).absolutePath() + "/" +
+			settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+			settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i)),
 			point_cloud_ptr
 		);
 

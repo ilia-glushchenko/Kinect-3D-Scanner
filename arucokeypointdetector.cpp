@@ -7,12 +7,14 @@ ArUcoKeypointDetector::ArUcoKeypointDetector(QObject *parent, QSettings* parent_
 	: ScannerBase(parent, parent_settings)
 {
 	CamParam.readFromXMLFile(
-		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		(QFileInfo(settings->fileName()).absolutePath() + "/" +
+		settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
 		settings->value("ARUCO_SETTINGS/CAMERA_PARAMS_FILE_NAME").toString()).toStdString()
 	);
 
 	D.fromFile(
-		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		(QFileInfo(settings->fileName()).absolutePath() + "/" +
+		settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
 		settings->value("ARUCO_SETTINGS/MARKERS_DICT_FILE_NAME").toString()).toStdString()
 	);
 }
@@ -37,12 +39,14 @@ ArUcoKeypointDetector::ArUcoKeypointDetector(
 	keypoint_point_cloud_ptr2 = keypoint_cloud_ptr2;
 
 	CamParam.readFromXMLFile(
-		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		(QFileInfo(settings->fileName()).absolutePath() + "/" +
+		settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
 		settings->value("ARUCO_SETTINGS/CAMERA_PARAMS_FILE_NAME").toString()).toStdString()
 	);
 
 	D.fromFile(
-		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		(QFileInfo(settings->fileName()).absolutePath() + "/" +
+		settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
 		settings->value("ARUCO_SETTINGS/MARKERS_DICT_FILE_NAME").toString()).toStdString()
 	);
 }
