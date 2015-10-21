@@ -10,12 +10,12 @@
 
 #include "types.h"
 
-class ICPRegistration : public QObject
+class ICPRegistration : public ScannerBase
 {
 	Q_OBJECT
 
 public:
-	ICPRegistration(QObject *parent);
+	ICPRegistration(QObject *parent, QSettings* parent_settings);
 
 	void calculateICPTransformation(
 		KeypointsFrames& keypointsFrames,
@@ -30,8 +30,6 @@ public:
 	);
 
 private:
-	QSettings* settings;
-
 	void prepare();
 	Matrix4fVector _icp_translation_matrix_vector;
 

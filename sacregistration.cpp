@@ -1,12 +1,9 @@
 #include "sacregistration.h"
 
 SaCRegistration::SaCRegistration(
-	QObject *parent
-	)
+	QObject *parent, QSettings* parent_settings
+	) : ScannerBase(parent, parent_settings)
 {
-	setParent(parent);
-	settings = new QSettings("scaner.ini", QSettings::IniFormat, this);
-
 	inlier_threshold = settings->value("SAC_SETTINGS/INLIER_THRESHOLD").toDouble();
 	max_iter		 = settings->value("SAC_SETTINGS/MAX_ITERATIONS").toInt();
 }
@@ -63,10 +60,10 @@ void SaCRegistration::calculate_sac(
 	)
 {
 	pcl::registration::CorrespondenceRejectorSampleConsensus<PointType> sac;
-	sac.setInputCloud(keypointsFrame.keypointsPcdPair.second);
-	sac.setTargetCloud(keypointsFrame.keypointsPcdPair.first);
+	sac.setInputSource(keypointsFrame.keypointsPcdPair.second);
+	sac.setInputTarget(keypointsFrame.keypointsPcdPair.first);
 	sac.setInlierThreshold(inlier_threshold);
-	sac.setMaxIterations(max_iter);
+	sac.setMaximumIterations(max_iter);
 
 	boost::shared_ptr<pcl::Correspondences> correspondences_ptr(new pcl::Correspondences);
 	for (int i = 0; i < keypointsFrame.keypointsPcdCorrespondences.size(); i++)
@@ -85,38 +82,30 @@ void SaCRegistration::calculate_one_keypoint_pair_sac(
 	Eigen::Matrix4f& transformation_matrix
 	)
 {
-	//Calculate rejection
-	KeypointsFrame inliers_keypointsFrame;
-	KeypointsRejection rejection(this);
-	rejection.rejection(keypointsFrame, inliers_keypointsFrame);
-
 	//Calculate SaC transform according to camera position
 	Eigen::Matrix4f best_transformation_matrix = Eigen::Matrix4f::Identity();
 	calculate_sac(
-		inliers_keypointsFrame,
+		keypointsFrame,
 		DISABLED_INLIER_THRESHOLD, max_iter,
-		inliers_keypointsFrame.keypointsPcdCorrespondences, 
+		keypointsFrame.keypointsPcdCorrespondences,
 		best_transformation_matrix
 	);
 
 	//Transform Keypoint clouds
 	pcl::transformPointCloud(
-		*inliers_keypointsFrame.keypointsPcdPair.first.get(),
-		*inliers_keypointsFrame.keypointsPcdPair.first.get(),
+		*keypointsFrame.keypointsPcdPair.first,
+		*keypointsFrame.keypointsPcdPair.first,
 		transformation_matrix
 	);
 	transformation_matrix = transformation_matrix * best_transformation_matrix;
 	pcl::transformPointCloud(
-		*inliers_keypointsFrame.keypointsPcdPair.second.get(),
-		*inliers_keypointsFrame.keypointsPcdPair.second.get(),
+		*keypointsFrame.keypointsPcdPair.second,
+		*keypointsFrame.keypointsPcdPair.second,
 		transformation_matrix
 	);
 
-	//Update input frame
-	copyKeypointsFrame(inliers_keypointsFrame, keypointsFrame);
-
 	if (settings->value("SAC_SETTINGS/ENABLE_LOG").toBool())
-		std::cout << std::endl << transformation_matrix << std::endl;
+		std::cout << "\n" << transformation_matrix << "\n";
 }
 
 void SaCRegistration::calculate_all_keypoint_pair_sac(
@@ -129,7 +118,7 @@ void SaCRegistration::calculate_all_keypoint_pair_sac(
 	Eigen::Matrix4f transformation_matrix = intial_transformation_matrix;
 	_sac_translation_matrix_vector.push_back(transformation_matrix);
 
-	for (int i = 0; i < keypointsFrames.size(); i++)
+	for (size_t i = 0; i < keypointsFrames.size(); i++)
 	{
 		qDebug() << QString("SaC registration: %1 / %2").arg(i + 1).arg(keypointsFrames.size()).toStdString().c_str();
 		calculate_one_keypoint_pair_sac(
@@ -138,7 +127,7 @@ void SaCRegistration::calculate_all_keypoint_pair_sac(
 		);
 
 		if (settings->value("SAC_SETTINGS/ENABLE_LOG").toBool())
-			std::cout << std::endl << transformation_matrix << std::endl;
+			std::cout << "\n" << transformation_matrix << "\n";
 
 		_sac_translation_matrix_vector.push_back(transformation_matrix);
 	}
@@ -152,7 +141,7 @@ void SaCRegistration::calculate_middle_based_all_keypoint_pair_sac(
 	)
 {
 	Eigen::Matrix4f transformation_matrix = intial_transformation_matrix;
-	for (int i = 0; i < keypointsFrames.size(); i++)
+	for (size_t i = 0; i < keypointsFrames.size(); i++)
 	{
 		qDebug() << QString("SaC registration: %1 / %2").arg(i + 1).arg(keypointsFrames.size()).toStdString().c_str();
 		calculate_one_keypoint_pair_sac(

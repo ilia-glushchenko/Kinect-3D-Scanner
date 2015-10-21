@@ -3,26 +3,23 @@
 #define WIDTH  640
 #define HEIGHT 480
 
-ArUcoKeypointDetector::ArUcoKeypointDetector(QObject *parent)
+ArUcoKeypointDetector::ArUcoKeypointDetector(QObject *parent, QSettings* parent_settings)
+	: ScannerBase(parent, parent_settings)
 {
-	setParent(parent);
-
-	settings = new QSettings("scaner.ini", QSettings::IniFormat, this);
-
 	CamParam.readFromXMLFile(
-		settings->value(
-		"ARUCO_SETTINGS/CAMERA_PARAMS_FILE_NAME"
-		).toString().toStdString()
-		);
+		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		settings->value("ARUCO_SETTINGS/CAMERA_PARAMS_FILE_NAME").toString()).toStdString()
+	);
 
-	D.fromFile(settings->value(
-		"ARUCO_SETTINGS/MARKERS_DICT_FILE_NAME"
-		).toString().toStdString()
-		);
+	D.fromFile(
+		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		settings->value("ARUCO_SETTINGS/MARKERS_DICT_FILE_NAME").toString()).toStdString()
+	);
 }
 
 ArUcoKeypointDetector::ArUcoKeypointDetector(
 		QObject *parent,
+		QSettings* parent_settings,
 		PcdPtr cloud_ptr1,
 		PcdPtr cloud_ptr2,
 		cv::Mat img1,
@@ -30,9 +27,8 @@ ArUcoKeypointDetector::ArUcoKeypointDetector(
 		PcdPtr keypoint_cloud_ptr1,
 		PcdPtr keypoint_cloud_ptr2
 	)
+	: ScannerBase(parent, parent_settings)
 {
-	setParent(parent);
-
 	point_cloud_ptr1 = cloud_ptr1;
 	point_cloud_ptr2 = cloud_ptr2;
 	image1 = img1;
@@ -40,17 +36,14 @@ ArUcoKeypointDetector::ArUcoKeypointDetector(
 	keypoint_point_cloud_ptr1 = keypoint_cloud_ptr1;
 	keypoint_point_cloud_ptr2 = keypoint_cloud_ptr2;
 
-	settings = new QSettings("scaner.ini", QSettings::IniFormat);
-
 	CamParam.readFromXMLFile(
-		settings->value(
-		"ARUCO_SETTINGS/CAMERA_PARAMS_FILE_NAME"
-		).toString().toStdString()
+		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		settings->value("ARUCO_SETTINGS/CAMERA_PARAMS_FILE_NAME").toString()).toStdString()
 	);
 
-	D.fromFile(settings->value(
-		"ARUCO_SETTINGS/MARKERS_DICT_FILE_NAME"
-		).toString().toStdString()
+	D.fromFile(
+		(settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+		settings->value("ARUCO_SETTINGS/MARKERS_DICT_FILE_NAME").toString()).toStdString()
 	);
 }
 

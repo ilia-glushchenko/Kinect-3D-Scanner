@@ -8,7 +8,8 @@
 
 namespace tools 
 {
-	bool copyRecursively(const QString &srcFilePath, const QString &tgtFilePath);
+	bool copyRecursively(const QString& srcFilePath, const QString& tgtFilePath);
+	bool fileExists(const QString& filePath);
 }
 
 #endif //__TOOLS_h

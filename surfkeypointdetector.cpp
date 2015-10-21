@@ -5,6 +5,7 @@
 
 SurfKeypointDetector::SurfKeypointDetector(
 	QObject *parent,
+	QSettings* parent_settings,
 	PcdPtr cloud_ptr1,
 	PcdPtr cloud_ptr2,
 	cv::Mat  img1,
@@ -12,6 +13,7 @@ SurfKeypointDetector::SurfKeypointDetector(
 	PcdPtr keypoint_cloud_ptr1,
 	PcdPtr keypoint_cloud_ptr2
 	) 
+	: ScannerBase(parent, parent_settings)
 {
 	setParent(parent);
 	_point_cloud_ptr1 = cloud_ptr1;
@@ -20,8 +22,6 @@ SurfKeypointDetector::SurfKeypointDetector(
 	image2 = img2;
 	keypoint_point_cloud_ptr1 = keypoint_cloud_ptr1;
 	keypoint_point_cloud_ptr2 = keypoint_cloud_ptr2;
-
-	settings = new QSettings("scaner.ini", QSettings::IniFormat, this);
 }
 
 void SurfKeypointDetector::detect()
@@ -51,15 +51,15 @@ bool SurfKeypointDetector::flat_area_keypoints_filter_threshold_check(
 	if (right_x >= WIDTH)  right_x = WIDTH;
 	if (right_y >= HEIGHT) right_y = HEIGHT;
 
-	double current = point_cloud_ptr.get()->at(x, y).z;
+	double current = point_cloud_ptr->at(x, y).z;
 	double averege = 0.0f;
 	double counter = 0.0f;
 
 	for (int y = left_y; y < right_y; y++)
 		for (int x = left_x; x < right_x; x++)
-			if (isnan<float>(point_cloud_ptr.get()->at(x, y).z) == false)
+			if (isnan<float>(point_cloud_ptr->at(x, y).z) == false)
 			{
-				averege += point_cloud_ptr.get()->at(x, y).z;
+				averege += point_cloud_ptr->at(x, y).z;
 				counter++;
 			}
 
@@ -120,17 +120,17 @@ void SurfKeypointDetector::flat_area_keypoints_filter(
 			if (iter_counter >= min_radius)
 				threshold += (double)iter_counter / 1000.0f - (double)min_radius / 1000.0f;
 
-			int x1 = static_cast<int>(round(keypoints1[i].x));
-			int y1 = static_cast<int>(round(keypoints1[i].y));
+			int x1 = int(round(keypoints1[i].x));
+			int y1 = int(round(keypoints1[i].y));
 			bool pass_threshold1 = flat_area_keypoints_filter_threshold_check(
 				_point_cloud_ptr1, x1, y1, radius, threshold
-				);
+			);
 
-			int x2 = static_cast<int>(round(keypoints2[i].x));
-			int y2 = static_cast<int>(round(keypoints2[i].y));
+			int x2 = int(round(keypoints2[i].x));
+			int y2 = int(round(keypoints2[i].y));
 			bool pass_threshold2 = flat_area_keypoints_filter_threshold_check(
 				_point_cloud_ptr2, x2, y2, radius, threshold
-				);
+			);
 
 			if (pass_threshold1 && pass_threshold2)
 			{
@@ -171,14 +171,14 @@ void SurfKeypointDetector::perform_detection()
 		keypoints1, keypoints2,
 		_keypoints1, _keypoints2,
 		matches
-		);
+	);
 
 	std::vector<cv::Point2f> inlier_keypoints1, inlier_keypoints2;
 	std::vector<cv::DMatch>  inlier_matches;
 	surf_reject_keypoints(
 		keypoints1, keypoints2, matches,
 		inlier_keypoints1, inlier_keypoints2, inlier_matches
-		);
+	);
 
 	if (settings->value("OPENCV_KEYPOINT_DETECTION_SETTINGS/GRID_KEYPOINT_FILTER_ENABLE").toBool())
 	{
@@ -187,18 +187,18 @@ void SurfKeypointDetector::perform_detection()
 		surf_grid_keypoints_matcher(
 			inlier_keypoints1, inlier_keypoints2, inlier_matches,
 			grid_keypoints1, grid_keypoints2, grid_matches
-			);
+		);
 
 		std::vector<cv::Point2f> grid_inlier_keypoints1, grid_inlier_keypoints2;
 		std::vector<cv::DMatch>  grid_inlier_matches;
 		surf_reject_keypoints(
 			grid_keypoints1, grid_keypoints2, grid_matches,
 			grid_inlier_keypoints1, grid_inlier_keypoints2, grid_inlier_matches
-			);
+		);
 
 		surf_fill_keypoint_clouds(
 			grid_inlier_keypoints1, grid_inlier_keypoints2
-			);
+		);
 	}
 	else
 	{
@@ -371,14 +371,14 @@ void SurfKeypointDetector::surf_remove_nan_from_keypoints(
 
 	for (int i = 0; i < keypoints1.size(); i++)
 	{
-		int x1 = static_cast<int>(round(keypoints1[i].x));
-		int y1 = static_cast<int>(round(keypoints1[i].y));
+		int x1 = int(round(keypoints1[i].x));
+		int y1 = int(round(keypoints1[i].y));
 
-		int x2 = static_cast<int>(round(keypoints2[i].x));
-		int y2 = static_cast<int>(round(keypoints2[i].y));
+		int x2 = int(round(keypoints2[i].x));
+		int y2 = int(round(keypoints2[i].y));
 
-		if (pcl_isnan(_point_cloud_ptr1.get()->at(x1, y1).z) == false &&
-			pcl_isnan(_point_cloud_ptr2.get()->at(x2, y2).z) == false)
+		if (pcl_isnan(_point_cloud_ptr1->at(x1, y1).z) == false &&
+			pcl_isnan(_point_cloud_ptr2->at(x2, y2).z) == false)
 		{
 			result_matches.push_back(matches[i]);
 
@@ -401,26 +401,18 @@ void SurfKeypointDetector::surf_fill_keypoint_clouds(
 {
 	for (int i = 0; i < keypoints1.size(); i++)
 	{
-		if (pcl_isnan(_point_cloud_ptr1.get()->at(keypoints1[i].x, keypoints1[i].y).z) == false &&
-			pcl_isnan(_point_cloud_ptr2.get()->at(keypoints2[i].x, keypoints2[i].y).z) == false)
+		if (pcl_isnan(_point_cloud_ptr1->at(keypoints1[i].x, keypoints1[i].y).z) == false &&
+			pcl_isnan(_point_cloud_ptr2->at(keypoints2[i].x, keypoints2[i].y).z) == false)
 		{
-			keypoint_point_cloud_ptr1.get()->points.push_back(
-				_point_cloud_ptr1.get()->at(keypoints1[i].x, keypoints1[i].y)
+			keypoint_point_cloud_ptr1->push_back(
+				_point_cloud_ptr1->at(keypoints1[i].x, keypoints1[i].y)
 			);
 
-			keypoint_point_cloud_ptr2.get()->points.push_back(
-				_point_cloud_ptr2.get()->at(keypoints2[i].x, keypoints2[i].y)
+			keypoint_point_cloud_ptr2->push_back(
+				_point_cloud_ptr2->at(keypoints2[i].x, keypoints2[i].y)
 			);
 		}
 	}
-
-	keypoint_point_cloud_ptr1.get()->width = keypoint_point_cloud_ptr1->points.size();
-	keypoint_point_cloud_ptr1.get()->height = 1;
-	keypoint_point_cloud_ptr1.get()->resize(keypoint_point_cloud_ptr1.get()->width);
-
-	keypoint_point_cloud_ptr2.get()->width = keypoint_point_cloud_ptr2->points.size();
-	keypoint_point_cloud_ptr2.get()->height = 1;
-	keypoint_point_cloud_ptr2.get()->resize(keypoint_point_cloud_ptr2.get()->width);
 }
 
 //---------------------------------------------------------
@@ -438,31 +430,29 @@ void SurfKeypointDetector::surf_grid_keypoints_matcher(
 	int match_index2 = 0;
 
 	float max_area = 0.0f;
-	for (int i = 0; i < in_keypoints1.size(); i++)
+	for (size_t i = 0; i < in_keypoints1.size(); i++)
 	{
 		cv::Point2i p1, p2, p3;
 		float area = 0;
-		p1.x = static_cast<int>(round(in_keypoints1[i].x));
-		p1.y = static_cast<int>(round(in_keypoints1[i].y));
+		p1.x = int(round(in_keypoints1[i].x));
+		p1.y = int(round(in_keypoints1[i].y));
 
-		for (int j = 0; j < in_keypoints1.size(); j++)
+		for (size_t j = 0; j < in_keypoints1.size(); j++)
 		{
-			p2.x = static_cast<int>(round(in_keypoints1[j].x));
-			p2.y = static_cast<int>(round(in_keypoints1[j].y));
+			p2.x = int(round(in_keypoints1[j].x));
+			p2.y = int(round(in_keypoints1[j].y));
 
-			if (p2.x > p1.x)
-			{
+			if (p2.x > p1.x) {
 				p3.x = p2.x;
 				p3.y = p1.y;
 			}
-			else
-			{
+			else {
 				p3.x = p1.x;
 				p3.y = p2.y;
 			}
 
-			area = sqrtf(powf(p1.x - p3.x, 2) + powf(p1.y - p3.y, 2)) *
-				   sqrtf(powf(p2.x - p3.x, 2) + powf(p2.y - p3.y, 2));
+			area = sqrtf(powf(p1.x - p3.x, 2.0f) + powf(p1.y - p3.y, 2.0f)) *
+				   sqrtf(powf(p2.x - p3.x, 2.0f) + powf(p2.y - p3.y, 2.0f));
 			if (area > max_area)
 			{
 				max_area = area;
@@ -473,45 +463,30 @@ void SurfKeypointDetector::surf_grid_keypoints_matcher(
 	}
 
 	cv::Point2i p1;
-	p1.x = static_cast<int>(round(in_keypoints1[match_index1].x));
-	p1.y = static_cast<int>(round(in_keypoints1[match_index1].y));
+	p1.x = int(round(in_keypoints1[match_index1].x));
+	p1.y = int(round(in_keypoints1[match_index1].y));
 	cv::Point2i p2;
-	p2.x = static_cast<int>(round(in_keypoints1[match_index2].x));
-	p2.y = static_cast<int>(round(in_keypoints1[match_index2].y));
-	if (p1.x > p2.x)
-	{
-		int tmp = p1.x;
-		p1.x = p2.x;
-		p2.x = tmp;
+	p2.x = int(round(in_keypoints1[match_index2].x));
+	p2.y = int(round(in_keypoints1[match_index2].y));
+	if (p1.x > p2.x) {
+		std::swap(p1.x, p2.x);
 	}
-	if (p1.y > p2.y)
-	{
-		int tmp = p1.y;
-		p1.y = p2.y;
-		p2.y = tmp;
+	if (p1.y > p2.y) {
+		std::swap(p1.y, p2.y);
 	}
 
 	cv::Point2i p1_;
-	p1_.x = static_cast<int>(round(in_keypoints2[match_index1].x));
-	p1_.y = static_cast<int>(round(in_keypoints2[match_index1].y));
+	p1_.x = int(round(in_keypoints2[match_index1].x));
+	p1_.y = int(round(in_keypoints2[match_index1].y));
 	cv::Point2i p2_;
-	p2_.x = static_cast<int>(round(in_keypoints2[match_index2].x));
-	p2_.y = static_cast<int>(round(in_keypoints2[match_index2].y));
-	if (p1_.x > p2_.x)
-	{
-		int tmp = p1_.x;
-		p1_.x = p2_.x;
-		p2_.x = tmp;
+	p2_.x = int(round(in_keypoints2[match_index2].x));
+	p2_.y = int(round(in_keypoints2[match_index2].y));
+	if (p1_.x > p2_.x) {
+		std::swap(p1_.x, p2_.x);
 	}
-	if (p1_.y > p2_.y)
-	{
-		int tmp = p1_.y;
-		p1_.y = p2_.y;
-		p2_.y = tmp;
+	if (p1_.y > p2_.y) {
+		std::swap(p1_.y, p2_.y);
 	}
-
-	if (match_index1 == 16 && match_index2 == 21)
-		int pass = 0;
 
 	int length1 = (p2.x  - p1.x  + 1) * (p2.y  - p1.y  + 1);
 	int length2 = (p2_.y - p1_.y + 1) * (p2_.x - p1_.x + 1);
@@ -525,8 +500,6 @@ void SurfKeypointDetector::surf_grid_keypoints_matcher(
 		fill_first_grid(p1_, p2_, out_keypoints2, out_matches);
 		fill_second_grid(p1_, p2_, p1, p2, out_keypoints2, out_keypoints1, out_matches);
 	}
-
-	int pass = 0;
 }
 
 void SurfKeypointDetector::fill_first_grid(
@@ -576,11 +549,11 @@ void SurfKeypointDetector::fill_second_grid(
 	for (float y = p1_.y; y <= p2_.y; y += vertical_grid_step * y_expander_coef)
 		for (float x = p1_.x; x <= p2_.x; x += horizontal_frid_step * x_expander_coef)
 		{
-			out_keypoints2.push_back(cv::Point2f(static_cast<int>(round(x)), static_cast<int>(round(y))));
+			out_keypoints2.push_back(cv::Point2f(int(round(x)), int(round(y))));
 			out_matches[index].distance = sqrtf(
 				powf(out_keypoints1[index].x - out_keypoints2[index].x, 2) +
 				powf(out_keypoints1[index].y - out_keypoints2[index].y, 2)
-				);
+			);
 			index++;
 		}
 

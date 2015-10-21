@@ -13,13 +13,13 @@
 
 #include "types.h"
 
-class SurfKeypointDetector : public QObject
+class SurfKeypointDetector : public ScannerBase
 {
 	Q_OBJECT
 
 public:
 	SurfKeypointDetector(
-		QObject *parent,
+		QObject *parent, QSettings* parent_settings,
 		PcdPtr cloud_ptr1, PcdPtr cloud_ptr2,
 		cv::Mat  img1, cv::Mat  img2,
 		PcdPtr keypoint_cloud_ptr1, PcdPtr keypoint_cloud_ptr2
@@ -29,8 +29,6 @@ public:
 	void getMatchImagesVector(std::vector<cv::Mat>* matchImagesVector);
 
 private:
-	QSettings* settings;
-
 	PcdPtr _point_cloud_ptr1;
 	PcdPtr _point_cloud_ptr2;
 	cv::Mat  image1;

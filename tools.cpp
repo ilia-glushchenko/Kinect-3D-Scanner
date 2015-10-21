@@ -26,3 +26,9 @@ bool tools::copyRecursively(const QString &srcFilePath, const QString &tgtFilePa
 	}
 	return true;
 }
+
+bool tools::fileExists(const QString& filePath)
+{
+	QFileInfo srcFileInfo(filePath);
+	return srcFileInfo.exists();
+}

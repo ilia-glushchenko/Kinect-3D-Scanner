@@ -9,12 +9,12 @@
 
 #include "types.h"
 
-class KeypointsRejection : public QObject
+class KeypointsRejection : public ScannerBase
 {
 	Q_OBJECT
 
 public:
-	KeypointsRejection(QObject *parent);
+	KeypointsRejection(QObject *parent, QSettings* parent_settings);
 	void rejection(
 		KeypointsFrames& in_keypointsFrames,
 		KeypointsFrames& out_keypointsFrames
@@ -25,8 +25,6 @@ public:
 	);
 
 private:
-	QSettings* settings;
-
 	double inlier_threshold;
 	int    max_iter;
 	int    min_idsac_threshold;

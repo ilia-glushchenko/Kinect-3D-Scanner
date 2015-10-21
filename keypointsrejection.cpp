@@ -1,10 +1,8 @@
 #include "keypointsrejection.h"
 
-KeypointsRejection::KeypointsRejection(QObject *parent)
-	: QObject(parent)
+KeypointsRejection::KeypointsRejection(QObject *parent, QSettings* parent_settings)
+	: ScannerBase(parent, parent_settings)
 {
-	settings = new QSettings("scaner.ini", QSettings::IniFormat, this);
-
 	inlier_threshold	= settings->value("SAC_SETTINGS/INLIER_THRESHOLD").toDouble();
 	max_iter			= settings->value("SAC_SETTINGS/MAX_ITERATIONS").toInt();
 	min_idsac_threshold = settings->value("SAC_SETTINGS/IDSAC_MINIMUM").toInt();
@@ -34,7 +32,7 @@ void KeypointsRejection::perform_rejection(
 	KeypointsFrames& out_keypointsFrames
 	)
 {
-	for (int i = 0; i < in_keypointsFrames.size(); i++)
+	for (size_t i = 0; i < in_keypointsFrames.size(); i++)
 	{
 		KeypointsFrame keypointsFrame;
 		perform_rejection(in_keypointsFrames[i], keypointsFrame);
@@ -144,10 +142,12 @@ void KeypointsRejection::perform_rejection(
 		PcdPtr _result_target_point_cloud_ptr(new Pcd);
 		pcl::Correspondences _result_inliers;
 
-		for (int j = 0; j < result_inliers.size(); j++)
-			if (j != exclude_indexes[i])
+		for (int j = 0; j < result_inliers.size(); j++) {
+			if (j != exclude_indexes[i]) {
 				_result_inliers.push_back(result_inliers[j]);
-
+			}
+		}
+			
 		pcl::Correspondences buffer_correspondeces;
 		update_clouds(
 			 result_input_point_cloud_ptr,  result_target_point_cloud_ptr, _result_inliers,
@@ -187,14 +187,14 @@ void KeypointsRejection::iterative_decrementive_sample_consensus_rejection(
 		int exclude_index = -1;
 
 		//Iterative excluding of all points except the last one which is a camera point
-		for (int i = 0; i < result_inliers.size() - 1; i++)
+		for (size_t i = 0; i < result_inliers.size() - 1; i++)
 		{
 			PcdPtr _result_input_point_cloud_ptr(new Pcd);
 			PcdPtr _result_target_point_cloud_ptr(new Pcd);
 			pcl::Correspondences _result_inliers;
 
 			//Filling new clouds excluding i point from clouds
-			for (int j = 0; j < result_inliers.size(); j++) {
+			for (size_t j = 0; j < result_inliers.size(); j++) {
 				if (j != i) {
 					_result_inliers.push_back(result_inliers[j]);
 				}
@@ -204,7 +204,7 @@ void KeypointsRejection::iterative_decrementive_sample_consensus_rejection(
 			update_clouds(
 				result_input_point_cloud_ptr, result_target_point_cloud_ptr, _result_inliers,
 				_result_input_point_cloud_ptr, _result_target_point_cloud_ptr, buffer_correspondeces
-				);
+			);
 			_result_inliers = buffer_correspondeces;
 
 			//Trying sac
@@ -213,21 +213,20 @@ void KeypointsRejection::iterative_decrementive_sample_consensus_rejection(
 				_result_input_point_cloud_ptr, _result_target_point_cloud_ptr, _result_inliers,
 				DISABLED_INLIER_THRESHOLD, max_iter,
 				_result_inliers, best_transformation_matrix
-				);
+			);
 
 			pcl::transformPointCloud(
 				*_result_input_point_cloud_ptr.get(),
 				*_result_input_point_cloud_ptr.get(),
 				best_transformation_matrix
-				);
+			);
 
 			//Comparing camera distances knowing - camera is the last point of the cloud
 			PointType a = _result_input_point_cloud_ptr.get()->points[_result_input_point_cloud_ptr.get()->points.size() - 1];
 			PointType b = _result_target_point_cloud_ptr.get()->points[_result_target_point_cloud_ptr.get()->points.size() - 1];
 			float new_distance = sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2) + powf(a.z - b.z, 2));
 
-			if (new_distance < current_distance)
-			{
+			if (new_distance < current_distance) {
 				current_distance = new_distance;
 				exclude_index = i;
 			}
@@ -240,7 +239,7 @@ void KeypointsRejection::iterative_decrementive_sample_consensus_rejection(
 			PcdPtr _result_target_point_cloud_ptr(new Pcd);
 			pcl::Correspondences _result_inliers;
 
-			for (int i = 0; i < result_inliers.size(); i++) {
+			for (size_t i = 0; i < result_inliers.size(); i++) {
 				if (i != exclude_index) {
 					_result_inliers.push_back(result_inliers[i]);
 				}
@@ -278,13 +277,13 @@ void KeypointsRejection::calculate_sac(
 	)
 {
 	pcl::registration::CorrespondenceRejectorSampleConsensus<PointType> sac;
-	sac.setInputCloud(input_point_cloud_ptr);
-	sac.setTargetCloud(target_point_cloud_ptr);
+	sac.setInputSource(input_point_cloud_ptr);
+	sac.setInputTarget(target_point_cloud_ptr);
 	sac.setInlierThreshold(inlier_threshold);
-	sac.setMaxIterations(max_iter);
+	sac.setMaximumIterations(max_iter);
 
 	boost::shared_ptr<pcl::Correspondences> correspondences_ptr(new pcl::Correspondences);
-	for (int i = 0; i < ñorrespondences.size(); i++)
+	for (size_t i = 0; i < ñorrespondences.size(); i++)
 		correspondences_ptr.get()->push_back(ñorrespondences[i]);
 	sac.setInputCorrespondences(correspondences_ptr);
 
@@ -305,7 +304,7 @@ void KeypointsRejection::update_clouds(
 	pcl::Correspondences& out_correspondences
 	)
 {
-	for (int i = 0; i < in_correspondences.size(); i++)
+	for (size_t i = 0; i < in_correspondences.size(); i++)
 	{
 		PointType a = in_input_point_cloud_ptr1.get()->points[in_correspondences[i].index_query];
 		PointType b = in_traget_point_cloud_ptr2.get()->points[in_correspondences[i].index_match];
@@ -340,25 +339,17 @@ void KeypointsRejection::add_camera_pose_points(
 	Eigen::Matrix4f& target_transformation_matrix
 	)
 {
-	PointType a;
+	PointType a = PointType();
 	a.x = input_transformation_matrix(0, 3);
 	a.y = input_transformation_matrix(1, 3);
 	a.z = input_transformation_matrix(2, 3);
-	a.r = 0; a.g = 0; a.b = 0;
-	input_point_cloud_ptr.get()->points.push_back(a);
-	input_point_cloud_ptr.get()->width = input_point_cloud_ptr.get()->points.size();
-	input_point_cloud_ptr.get()->height = 1;
-	input_point_cloud_ptr.get()->resize(input_point_cloud_ptr.get()->width);
+	input_point_cloud_ptr.get()->push_back(a);
 
-	PointType b;
+	PointType b = PointType();
 	b.x = target_transformation_matrix(0, 3);
 	b.y = target_transformation_matrix(1, 3);
 	b.z = target_transformation_matrix(2, 3);
-	b.r = 0; b.g = 0; b.b = 0;
-	target_point_cloud_ptr.get()->points.push_back(b);
-	target_point_cloud_ptr.get()->width = target_point_cloud_ptr.get()->points.size();
-	target_point_cloud_ptr.get()->height = 1;
-	target_point_cloud_ptr.get()->resize(target_point_cloud_ptr.get()->width);
+	target_point_cloud_ptr.get()->push_back(b);
 
 	pcl::Correspondence correspondence;
 	correspondence.index_query = input_point_cloud_ptr.get()->points.size() - 1;

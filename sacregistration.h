@@ -8,15 +8,14 @@
 
 #include <pcl/registration/correspondence_rejection_sample_consensus.h>
 
-#include "keypointsrejection.h"
 #include "types.h"
 
-class SaCRegistration : public QObject
+class SaCRegistration : public ScannerBase
 {
 	Q_OBJECT
 
 public:
-	SaCRegistration(QObject *parent);
+	SaCRegistration(QObject *parent, QSettings* parent_settings);
 	
 	void calculateSaCTransformation(
 		KeypointsFrames& keypointsFrames,
@@ -31,8 +30,6 @@ public:
 	);
 
 private:
-	QSettings* settings;
-
 	double inlier_threshold;
 	int    max_iter;
 

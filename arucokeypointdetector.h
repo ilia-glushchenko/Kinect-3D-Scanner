@@ -13,16 +13,17 @@
 
 #include "types.h"
 
-class ArUcoKeypointDetector : public QObject
+class ArUcoKeypointDetector : public ScannerBase
 {
 	Q_OBJECT
 
 public:
 	ArUcoKeypointDetector(
-		QObject *parent
+		QObject *parent, QSettings* parent_settings
 	);
 	ArUcoKeypointDetector(
 		QObject *parent,
+		QSettings* parent_settings,
 		PcdPtr cloud_ptr1,
 		PcdPtr cloud_ptr2,
 		cv::Mat img1,
@@ -38,8 +39,6 @@ public:
 	);
 
 private:
-	QSettings* settings;
-
 	PcdPtr point_cloud_ptr1;
 	PcdPtr point_cloud_ptr2;
 	cv::Mat image1;

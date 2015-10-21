@@ -211,7 +211,7 @@ void ReconstructionInterface::calculate_keypoint_clouds(
 	if (aruco == true)
 	{
 		ArUcoKeypointDetector aruco(
-			this, 
+			this, settings,
 			frame1.pointCloudPtr,	frame2.pointCloudPtr, 
 			frame1.pointCloudImage, frame2.pointCloudImage, 
 			keypoint_cloud_ptr1,    keypoint_cloud_ptr2
@@ -222,7 +222,7 @@ void ReconstructionInterface::calculate_keypoint_clouds(
 	if (surf == true)
 	{
 		SurfKeypointDetector surf(
-			this, 
+			this, settings,
 			frame1.pointCloudPtr,   frame2.pointCloudPtr,
 			frame1.pointCloudImage, frame2.pointCloudImage,
 			keypoint_cloud_ptr1,    keypoint_cloud_ptr2
@@ -281,6 +281,16 @@ void ReconstructionInterface::calculate_all_keypoint_pairs(
 	}
 }
 
+void ReconstructionInterface::calculate_all_keypoint_pairs_rejection(
+	KeypointsFrames& keypointsFrames_in, KeypointsFrames& keypointsFrames_out
+	)
+{
+	KeypointsFrames tempInlierKeypointFrames;
+	KeypointsRejection rejection(this, settings);
+	rejection.rejection(keypointsFrames_in, tempInlierKeypointFrames);
+	keypointsFrames_out = tempInlierKeypointFrames;
+}
+
 void ReconstructionInterface::calculate_middle_based_all_keypoint_pairs(
 	Frames& frames,
 	KeypointsFrames& keypointsFrames,
@@ -321,7 +331,7 @@ void ReconstructionInterface::perform_sac_registration(
 	int middle_index
 	)
 {
-	SaCRegistration sac(this);
+	SaCRegistration sac(this, settings);
 	sac.calculateSaCTransformation(keypointsFrames, intial_transformation_matrix, middle_index);
 	sac.getTransformation(sac_translation_matrix_vector);
 
@@ -345,7 +355,7 @@ void ReconstructionInterface::perform_icp_registration(
 	int middle_index
 	)
 {
-	ICPRegistration icp(this);
+	ICPRegistration icp(this, settings);
 	icp.calculateICPTransformation(keypointsFrames, intial_transformation_matrix, middle_index);
 	icp.getTransformation(icp_translation_matrix_vector);
 
@@ -403,8 +413,9 @@ void ReconstructionInterface::perform_tsdf_integration(
 	)
 {
 	PcdPtrVector point_cloud_vector;
-	for (int i = 0; i < frames.size(); i++)
+	for (int i = 0; i < frames.size(); i++) {
 		point_cloud_vector.push_back(frames[i].pointCloudPtr);
+	}
 
 	volumeReconstruction->addPointCloudVector(
 		point_cloud_vector,
@@ -419,8 +430,9 @@ void ReconstructionInterface::perform_tsdf_meshing(
 	volumeReconstruction->prepareVolume();
 	pcdVizualizer->redraw();
 
-	if (settings->value("FINAL_SETTINGS/DRAW_ALL_CAMERA_POSES").toBool())
+	if (settings->value("FINAL_SETTINGS/DRAW_ALL_CAMERA_POSES").toBool()) {
 		pcdVizualizer->visualizeCameraPoses(final_translation_matrix_vector);
+	}
 
 	if (settings->value("CPU_TSDF_SETTINGS/DRAW_MESH").toBool())
 	{
@@ -443,24 +455,26 @@ void ReconstructionInterface::perform_reconstruction()
 	read_data(from, to, step, frames);
 
 	KeypointsFrames keypointsFrames;	
-	Matrix4fVector  final_translation_matrix_vector;
+	Matrix4fVector sac_translation_matrix_vector;
+	Matrix4fVector icp_translation_matrix_vector;
+	Matrix4fVector final_translation_matrix_vector;
 
 	if (use_reconstruction)
 	{
 		filter_all_point_clouds(frames);
 		reorganize_all_point_clouds(frames);
-		calculate_all_keypoint_pairs(frames, keypointsFrames);
-		remove_nan_from_all_clouds(frames);
-		
-		Matrix4fVector sac_translation_matrix_vector;
-		Matrix4fVector icp_translation_matrix_vector;
-		
-		Eigen::Matrix4f intial_transformation_matrix = Eigen::Matrix4f::Identity();
-		if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool())
-			perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);
 
-		if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool())
+		calculate_all_keypoint_pairs(frames, keypointsFrames);
+		calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
+
+		remove_nan_from_all_clouds(frames);		
+		Eigen::Matrix4f intial_transformation_matrix = Eigen::Matrix4f::Identity();
+		if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
+			perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);
+		}
+		if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
 			perform_icp_registration(frames, keypointsFrames, intial_transformation_matrix, icp_translation_matrix_vector);
+		}
 
 		calculate_final_transformation_matrix_vector(
 			sac_translation_matrix_vector,
@@ -532,6 +546,7 @@ void ReconstructionInterface::perform_iterative_reconstruction()
 			filter_all_point_clouds(frames);
 			reorganize_all_point_clouds(frames);
 			calculate_all_keypoint_pairs(frames, keypointsFrames);
+			calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
 			remove_nan_from_all_clouds(frames);
 
 			Matrix4fVector sac_translation_matrix_vector;
@@ -595,6 +610,7 @@ void ReconstructionInterface::perform_partition_recursive_reconstruction()
 		filter_all_point_clouds(frames);
 		reorganize_all_point_clouds(frames);
 		calculate_all_keypoint_pairs(frames, keypointsFrames);
+		calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
 		remove_nan_from_all_clouds(frames);
 
 		Matrix4fVector sac_translation_matrix_vector;
@@ -648,6 +664,7 @@ void ReconstructionInterface::perform_partition_recursive_reconstruction()
 		filter_all_point_clouds(frames);
 		reorganize_all_point_clouds(frames);
 		calculate_middle_based_all_keypoint_pairs(frames, keypointsFrames, middle_index);
+		calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
 		remove_nan_from_all_clouds(frames);
 
 		Matrix4fVector sac_translation_matrix_vector;
@@ -675,11 +692,10 @@ void ReconstructionInterface::perform_partition_recursive_reconstruction()
 
 		if (!settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool())
 		{
-			for (int i = 0; i < frames.size(); i++)
-			{
+			for (int i = 0; i < frames.size(); i++) {
 				pcl::transformPointCloud(
-					*frames[i].pointCloudPtr.get(),
-					*frames[i].pointCloudPtr.get(),
+					*frames[i].pointCloudPtr,
+					*frames[i].pointCloudPtr,
 					final_translation_matrix_vector[i]
 				);
 			}
@@ -782,21 +798,23 @@ void ReconstructionInterface::perform_lum_reconstruction()
 				Eigen::Matrix4f empty_mat = Eigen::Matrix4f::Identity();
 
 				read_data(from, cloud_index, cloud_index - from, frames);
+				
 				filter_all_point_clouds(frames);
 				reorganize_all_point_clouds(frames);
+
 				calculate_all_keypoint_pairs(frames, keypointsFrames);
-				remove_nan_from_all_clouds(frames);
-
+				KeypointsFrames inliersKeypointsFrames; 
+				calculate_all_keypoint_pairs_rejection(keypointsFrames, inliersKeypointsFrames);
 				//Saving untransformed filtered clouds
-				KeypointsFrames inliersKeypointsFrames;
-				KeypointsRejection rejection(this);
-				rejection.rejection(keypointsFrames, inliersKeypointsFrames);
-				inliersKeypointsFramesVector.push_back(inliersKeypointsFrames);
+				inliersKeypointsFramesVector.push_back(inliersKeypointsFrames); 
 
-				if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool())
+				remove_nan_from_all_clouds(frames);
+				if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
 					perform_sac_registration(frames, keypointsFrames, empty_mat, sac_translation_matrix_vector);
-				if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool())
+				}
+				if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
 					perform_icp_registration(frames, keypointsFrames, empty_mat, icp_translation_matrix_vector);
+				}
 
 				calculate_final_transformation_matrix_vector(
 					sac_translation_matrix_vector,
@@ -849,20 +867,22 @@ void ReconstructionInterface::perform_lum_reconstruction()
 			Eigen::Matrix4f empty_mat = Eigen::Matrix4f::Identity();
 
 			read_data(i, i + din_step, din_step, frames);
+			
 			filter_all_point_clouds(frames);
 			reorganize_all_point_clouds(frames);
-			calculate_all_keypoint_pairs(frames, keypointsFrames);
-			remove_nan_from_all_clouds(frames);
-
-			//Saving untransformed filtered clouds
-			KeypointsFrames inliersKeypointsFrames;
-			KeypointsRejection rejection(this);
-			rejection.rejection(keypointsFrames, inliersKeypointsFrames);
 			
-			if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool())
+			calculate_all_keypoint_pairs(frames, keypointsFrames);
+			KeypointsFrames inliersKeypointsFrames;
+			calculate_all_keypoint_pairs_rejection(keypointsFrames, inliersKeypointsFrames);
+			
+			remove_nan_from_all_clouds(frames);
+		
+			if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
 				perform_sac_registration(frames, keypointsFrames, empty_mat, sac_translation_matrix_vector);
-			if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool())
+			}
+			if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
 				perform_icp_registration(frames, keypointsFrames, empty_mat, icp_translation_matrix_vector);
+			}
 
 			calculate_final_transformation_matrix_vector(
 				sac_translation_matrix_vector,
@@ -871,7 +891,7 @@ void ReconstructionInterface::perform_lum_reconstruction()
 				frames.size()
 			);
 
-			loop_ends_keypoint_frames_vector.push_back(inliersKeypointsFrames);
+			loop_ends_keypoint_frames_vector.push_back(inliersKeypointsFrames); //Saving untransformed filtered clouds
 			loop_ends_indexes_vector.push_back(std::make_pair(i, i + din_step));
 			loop_ends_transformation_vector.push_back(final_translation_matrix_vector);
 		}
@@ -906,15 +926,17 @@ void ReconstructionInterface::perform_lum_reconstruction()
 		filter_all_point_clouds(frames);
 		reorganize_all_point_clouds(frames);
 		calculate_all_keypoint_pairs(frames, keypointsFrames);
+		calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
 		remove_nan_from_all_clouds(frames);
 	
 		Matrix4fVector sac_translation_matrix_vector;
 		Matrix4fVector icp_translation_matrix_vector;		
-		if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool())
-			perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);	
-		Eigen::Matrix4f empty_mat = Eigen::Matrix4f::Identity();
-		if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool())
-			perform_icp_registration(frames, keypointsFrames, empty_mat, icp_translation_matrix_vector);
+		if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
+			perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);
+		}
+		if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
+			perform_icp_registration(frames, keypointsFrames, Eigen::Matrix4f(Eigen::Matrix4f::Identity()), icp_translation_matrix_vector);
+		}
 
 		calculate_final_transformation_matrix_vector(
 			sac_translation_matrix_vector,
@@ -1023,20 +1045,6 @@ void ReconstructionInterface::perform_lum_reconstruction()
 			
 			elch.setLoopStart(0);
 			elch.setLoopEnd(mergedKeypointVector.size() - 1);
-
-			/*
-			std::vector<pcl::registration::CorrespondenceRejector::Ptr> rej_vec;
-			rej_vec = reg.get()->getCorrespondenceRejectors();
-			for (int i = 0; i < rej_vec.size(); i++)
-			{
-				qDebug() << "Set Cor:" << i + 1 << "/" << rej_vec.size();
-				boost::shared_ptr<pcl::Correspondences> correspondences(new pcl::Correspondences);
-				for (int k = 0; k < correspondences_vector[i].size(); k++)
-					correspondences.get()->push_back(correspondences_vector[i][k]);
-				rej_vec[i].get()->setInputCorrespondences(correspondences);
-			}
-			*/
-
 			elch.compute();
 
 			pcl::registration::ELCH<pcl::PointXYZRGB>::LoopGraphPtr loopGraphPtr;
@@ -1135,13 +1143,12 @@ void ReconstructionInterface::perform_lum_reconstruction()
 		}
 		else
 		{
-			for (int i = 0; i < frames.size(); i++)
+			for (int i = 0; i < frames.size(); i++) {
 				pcl::transformPointCloud(
-					*frames[i].pointCloudPtr.get(),
-					*frames[i].pointCloudPtr.get(),
-					final_translation_matrix_vector[i]
+					*frames[i].pointCloudPtr, *frames[i].pointCloudPtr, final_translation_matrix_vector[i]
 				);
-
+			}
+			
 			if (settings->value("FINAL_SETTINGS/DRAW_ALL_CAMERA_POSES").toBool())
 				pcdVizualizer->visualizeCameraPoses(final_translation_matrix_vector);
 			if (settings->value("FINAL_SETTINGS/DRAW_ALL_CLOUDS").toBool())

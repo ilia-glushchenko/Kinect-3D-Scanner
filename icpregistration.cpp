@@ -1,11 +1,10 @@
 #include "icpregistration.h"
 
 ICPRegistration::ICPRegistration(
-	QObject *parent
-	)
+	QObject *parent, QSettings* parent_settings
+	) : ScannerBase(parent, parent_settings)
 {
-	setParent(parent);
-	settings = new QSettings("scaner.ini", QSettings::IniFormat, this);
+
 }
 
 void ICPRegistration::calculateICPTransformation(
@@ -41,7 +40,7 @@ void ICPRegistration::getTransformation(
 	if (_icp_translation_matrix_vector.empty())
 		return;
 
-	for (int i = 0; i < _icp_translation_matrix_vector.size(); i++)
+	for (size_t i = 0; i < _icp_translation_matrix_vector.size(); i++)
 		icp_translation_matrix_vector.push_back(_icp_translation_matrix_vector[i]);
 }
 
@@ -103,7 +102,7 @@ void ICPRegistration::calculate_one_keypoint_pair_icp(
 			= settings->value("ICP_SETTINGS/EUCLIDEAN_EPSILON").toDouble();
 
 		pcl::IterativeClosestPointNonLinear<PointType, PointType> icp;
-		icp.setInputCloud(input_point_cloud_ptr);
+		icp.setInputSource(input_point_cloud_ptr);
 		icp.setInputTarget(target_point_cloud_ptr);
 		icp.setMaximumIterations(maxIter);
 		icp.setTransformationEpsilon(trans_epsilon);
@@ -177,7 +176,7 @@ void ICPRegistration::calculate_middle_based_all_keypoint_pair_icp(
 	)
 {
 	Eigen::Matrix4f transformation_matrix = intial_transformation_matrix;
-	for (int i = 0; i < keypointsFrames.size(); i++)
+	for (size_t i = 0; i < keypointsFrames.size(); i++)
 	{
 		qDebug() << QString("ICP registrations %1 / %2").arg(i + 1).arg(keypointsFrames.size()).toStdString().c_str();
 		calculate_one_keypoint_pair_icp(

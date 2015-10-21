@@ -93,6 +93,9 @@ private:
 		Frames& frames,
 		KeypointsFrames& keypointsFrames
 	);
+	void calculate_all_keypoint_pairs_rejection(
+		KeypointsFrames& keypointsFrames_in, KeypointsFrames& keypointsFrames_out
+	);
 	void calculate_middle_based_all_keypoint_pairs(
 		Frames& frames,
 		KeypointsFrames& keypointsFrames,

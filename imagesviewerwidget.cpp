@@ -8,7 +8,7 @@ ImagesViewerWidget::ImagesViewerWidget(std::vector<cv::Mat> images_vector, QStri
 	{
 		title = window_title;
 
-		for (int i = 0; i < images_vector.size(); i++)
+		for (size_t i = 0; i < images_vector.size(); i++)
 			imagesVector.push_back(Mat2QImage(images_vector[i]));
 
 		image_index = 0;

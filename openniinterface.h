@@ -15,6 +15,7 @@
 #include "arucokeypointdetector.h"
 #include "pclio.h"
 #include "types.h"
+#include "tools.h"
 
 class OpenNiInterface : public ScannerBase
 {

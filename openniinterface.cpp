@@ -128,33 +128,36 @@ void OpenNiInterface::initialize()
 	QString openni_out_text = settings->value("OPENNI_SETTINGS/OUT_TEXT").toString();
 
 	rc = OpenNI::initialize();
-	if (rc != STATUS_OK)
-	{
-		qDebug() << QString("%1 %2").arg(openni_out_text).arg("Initialize failed");
+	if (rc != STATUS_OK) {
+		qDebug() << QString("%1 %2").arg(openni_out_text).arg("Driver initializatioin failed");
 		return;
 	}
 
-	if (stream_from_record)
-	{
-		rc = device.open(
-			(settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "\\" +
-			settings->value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString()).toStdString().c_str()
-		);
-		PlaybackControl* pbc = device.getPlaybackControl();
-		pbc->setRepeatEnabled(settings->value("OPENNI_SETTINGS/REPEAT_RECORDING").toBool());
-		pbc->setSpeed(-1);
-		if (rc != STATUS_OK)
+	if (stream_from_record) {
+		QString filePath =
+			settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "\\" +
+			settings->value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString();
+
+		if (tools::fileExists(filePath) == false) {
+			rc = STATUS_ERROR;
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open recording!");
+		}
+		else
+		{
+			rc = device.open(filePath.toStdString().c_str());
+			PlaybackControl* pbc = device.getPlaybackControl();
+			pbc->setRepeatEnabled(settings->value("OPENNI_SETTINGS/REPEAT_RECORDING").toBool());
+			pbc->setSpeed(-1);
+		}
 	}
-	if (!stream_from_record || rc != STATUS_OK)
-	{
+	else if (rc == STATUS_OK) {
 		rc = device.open(ANY_DEVICE);
-		if (rc != STATUS_OK)
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't init device!");
+		if (rc != STATUS_OK) {
+			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open device!");
+		}
 	}
 
-	if (rc == STATUS_OK)
-	{
+	if (rc == STATUS_OK) {
 		rc = device.setDepthColorSyncEnabled(true);
 		if (rc != STATUS_OK)
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't sync color and depth frames");
@@ -179,8 +182,7 @@ void OpenNiInterface::initialize()
 		if (rc != STATUS_OK)
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a color stream");
 
-		if (record_stream && !stream_from_record)
-		{
+		if (record_stream && !stream_from_record) {
 			rc = recorder.create("recording.oni");
 			if (rc != STATUS_OK)
 				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create recording!");
@@ -198,8 +200,7 @@ void OpenNiInterface::initialize()
 				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start recorder!");
 		}
 
-		if (rc == STATUS_OK)
-		{
+		if (rc == STATUS_OK) {
 			device_inited = true;
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Initialized successfully!");
 		}
@@ -270,7 +271,7 @@ void OpenNiInterface::read_frame()
 		if (settings->value("ARUCO_SETTINGS/ENABLE_IN_STREAM").toBool())
 		{
 			std::vector<aruco::Marker> Markers;
-			ArUcoKeypointDetector aruco(this);
+			ArUcoKeypointDetector aruco(this, settings);
 			aruco.getMarkersVector(colorFrameMat, &Markers);
 		}
 
@@ -350,12 +351,12 @@ void OpenNiInterface::take_one_image()
 		colorFrame.getHeight(),
 		colorFrame.getWidth(),
 		CV_8UC3
-		);
+	);
 	memcpy(
 		colorFrameMat.data,
 		colorBuffer,
 		3 * colorFrame.getHeight()*colorFrame.getWidth()*sizeof(uint8_t)
-		);
+	);
 
 	cvtColor(colorFrameMat, colorFrameMat, CV_BGR2RGB);
 
@@ -365,8 +366,7 @@ void OpenNiInterface::take_one_image()
 	DepthPixel* depthpixels = (DepthPixel*)depthFrame.getData();
 	DepthMap depthMap;
 
-	if (stream_bilateral)
-	{
+	if (stream_bilateral) {
 		apply_bilateral_filter(depthpixels, depthpixels);
 	}
 
@@ -468,7 +468,7 @@ void OpenNiInterface::initialize_rotation()
 {
 	serial->setPortName(
 		settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()
-		);
+	);
 	serial->setBaudRate(QSerialPort::Baud57600);
 
 	if (!serial->open(QIODevice::WriteOnly)) {
