@@ -91,8 +91,6 @@ void ScannerWidget::initializeMainInterface()
 
 void ScannerWidget::initializeOpenDialogInterface()
 {
-	setWindowTitle("No project opened...");
-
 	makeProjectButton = new QPushButton("Make Project");
 	connect(makeProjectButton, SIGNAL(clicked()), this, SLOT(slot_make_project()));
 	openProjectButton = new QPushButton("Open Project");
@@ -104,6 +102,7 @@ void ScannerWidget::initializeOpenDialogInterface()
 	vBoxLayout->addWidget(openProjectButton);
 	centralWidget->setLayout(vBoxLayout);
 	setCentralWidget(centralWidget);
+	setWindowTitle("No project opened...");
 }
 
 void ScannerWidget::initializeDebugInterface()
@@ -151,8 +150,12 @@ void ScannerWidget::initializeReleaseInterface()
 	vBoxLayout = new QVBoxLayout();
 	vBoxLayout->addWidget(makeProjectButton);
 	vBoxLayout->addWidget(openProjectButton);
-	vBoxLayout->addWidget(initButton);
-	vBoxLayout->addWidget(saveDataButton);
+	if (settings->value("OPENNI_SETTINGS/ROTATION_ENABLE").toBool()) {
+		vBoxLayout->addWidget(takeImagesButton);
+	}
+	else {
+		vBoxLayout->addWidget(initButton);
+	}
 	vBoxLayout->addWidget(drawScene3dModelButton);
 
 	centralWidget->setLayout(vBoxLayout);
@@ -329,9 +332,12 @@ void ScannerWidget::slot_draw_scene3d_model()
 {
 	reconstructionInterface->slot_perform_reconstruction();
 
-	if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool() == false)
-		if (slider->isHidden())
+	if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool() == false
+		&& settings->value("PROJECT_SETTINGS/DEBUG_INTERFACE").toBool())
+	{
+		if (slider->isHidden()) 
 			slider->show();
+	}	
 }
 
 void ScannerWidget::slot_change_pair(int index)

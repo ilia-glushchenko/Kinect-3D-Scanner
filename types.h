@@ -25,8 +25,9 @@ typedef pcl::PointNormal		     PointNormal;
 typedef pcl::PointCloud<PointNormal> NormalPcd;
 typedef NormalPcd::Ptr				 NormalPcdPtr;
 
-typedef std::vector<PcdPtr>			 PcdPtrVector;
-typedef std::vector<NormalPcdPtr>	 NormalPcdPtrVector;
+typedef std::vector<PcdPtr>				  PcdPtrVector;
+typedef std::vector<NormalPcdPtr>		  NormalPcdPtrVector;
+typedef std::vector<pcl::Correspondences> CorrespondencesVector;
 
 typedef std::pair<PcdPtr, PcdPtr>			   KeypointsPcdPair;
 typedef std::pair<NormalPcdPtr, NormalPcdPtr>  KeypointsNormalPcdPair;

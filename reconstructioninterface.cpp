@@ -355,13 +355,12 @@ void ReconstructionInterface::perform_sac_registration(
 void ReconstructionInterface::perform_icp_registration(
 	Frames&	frames,
 	KeypointsFrames& keypointsFrames,
-	Eigen::Matrix4f& intial_transformation_matrix,
 	Matrix4fVector&  icp_translation_matrix_vector,
 	int middle_index
 	)
 {
 	ICPRegistration icp(this, settings);
-	icp.calculateICPTransformation(keypointsFrames, intial_transformation_matrix, middle_index);
+	icp.calculateICPTransformation(keypointsFrames, Eigen::Matrix4f(Eigen::Matrix4f::Identity()), middle_index);
 	icp.getTransformation(icp_translation_matrix_vector);
 
 	if (!settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool() &&
@@ -450,6 +449,42 @@ void ReconstructionInterface::perform_tsdf_meshing(
 
 //-------------------------MAIN--------------------------
 
+void ReconstructionInterface::perform_reconstruction(
+	Frames& frames_in, 
+	Eigen::Matrix4f& intial_transformation_matrix,
+	KeypointsFrames& keypoints_frames_out,
+	Matrix4fVector& final_translation_matrix_vector_out,
+	int middle_index
+	)
+{
+	Matrix4fVector sac_translation_matrix_vector;
+	Matrix4fVector icp_translation_matrix_vector;
+
+	filter_all_point_clouds(frames_in);
+	reorganize_all_point_clouds(frames_in);
+
+	calculate_all_keypoint_pairs(frames_in, keypoints_frames_out);
+	calculate_all_keypoint_pairs_rejection(keypoints_frames_out, keypoints_frames_out);
+
+	remove_nan_from_all_clouds(frames_in);
+
+	if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
+		perform_sac_registration(
+			frames_in, keypoints_frames_out, intial_transformation_matrix, sac_translation_matrix_vector, middle_index
+		);
+	}
+	if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
+		perform_icp_registration(frames_in, keypoints_frames_out, icp_translation_matrix_vector, middle_index);
+	}
+
+	calculate_final_transformation_matrix_vector(
+		sac_translation_matrix_vector,
+		icp_translation_matrix_vector,
+		final_translation_matrix_vector_out,
+		frames_in.size()
+	);
+}
+
 void ReconstructionInterface::perform_reconstruction()
 {
 	int from = settings->value("READING_SETTING/FROM").toInt();
@@ -460,44 +495,21 @@ void ReconstructionInterface::perform_reconstruction()
 	read_data(from, to, step, frames);
 
 	KeypointsFrames keypointsFrames;	
-	Matrix4fVector sac_translation_matrix_vector;
-	Matrix4fVector icp_translation_matrix_vector;
 	Matrix4fVector final_translation_matrix_vector;
 
 	if (use_reconstruction)
 	{
-		filter_all_point_clouds(frames);
-		reorganize_all_point_clouds(frames);
-
-		calculate_all_keypoint_pairs(frames, keypointsFrames);
-		calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
-
-		remove_nan_from_all_clouds(frames);		
-		Eigen::Matrix4f intial_transformation_matrix = Eigen::Matrix4f::Identity();
-		if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
-			perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);
-		}
-		if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
-			perform_icp_registration(frames, keypointsFrames, intial_transformation_matrix, icp_translation_matrix_vector);
-		}
-
-		calculate_final_transformation_matrix_vector(
-			sac_translation_matrix_vector,
-			icp_translation_matrix_vector,
-			final_translation_matrix_vector,
-			frames.size()
-		);
-
-		if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool())
-		{
-			reorganize_all_point_clouds(frames);
-			perform_tsdf_integration(frames, final_translation_matrix_vector);
-			perform_tsdf_meshing(final_translation_matrix_vector);
-		}		
+		perform_reconstruction(
+			 frames, Eigen::Matrix4f(Eigen::Matrix4f::Identity()), keypointsFrames, final_translation_matrix_vector
+		);	
 	}
 
-	if (!settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool())
-	{
+	if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool()) {
+		reorganize_all_point_clouds(frames);
+		perform_tsdf_integration(frames, final_translation_matrix_vector);
+		perform_tsdf_meshing(final_translation_matrix_vector);
+	}
+	else {
 		pcdVizualizer->redraw();
 		
 		if (settings->value("FINAL_SETTINGS/DRAW_ALL_CAMERA_POSES").toBool())
@@ -518,8 +530,7 @@ void ReconstructionInterface::perform_iterative_reconstruction()
 	int length = (to - from) / step;
 	int main_step = settings->value("FINAL_SETTINGS/ITERATIVE_RECONSTRUCTION_STEP").toInt();
 
-	if (length < main_step)
-	{
+	if (length < main_step) {
 		perform_reconstruction();
 		return;
 	}
@@ -537,10 +548,7 @@ void ReconstructionInterface::perform_iterative_reconstruction()
 
 		Frames frames;
 		read_data(
-			from + (i * main_step * step), 
-			from + (i * main_step * step) + (main_step * step), 
-			step, 
-			frames
+			(from + (i * main_step * step)), (from + (i * main_step * step) + (main_step * step)), step, frames
 		);
 
 		KeypointsFrames keypointsFrames;
@@ -548,48 +556,39 @@ void ReconstructionInterface::perform_iterative_reconstruction()
 
 		if (use_reconstruction)
 		{
-			filter_all_point_clouds(frames);
-			reorganize_all_point_clouds(frames);
-			calculate_all_keypoint_pairs(frames, keypointsFrames);
-			calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
-			remove_nan_from_all_clouds(frames);
-
-			Matrix4fVector sac_translation_matrix_vector;
-			Matrix4fVector icp_translation_matrix_vector;
-			
-			if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool())
-				perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);
-
-			Eigen::Matrix4f empty_mat = Eigen::Matrix4f::Identity();
-			if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool())
-				perform_icp_registration(frames, keypointsFrames, empty_mat, icp_translation_matrix_vector);
-
-			calculate_final_transformation_matrix_vector(
-				sac_translation_matrix_vector,
-				icp_translation_matrix_vector,
-				final_translation_matrix_vector,
-				frames.size()
+			perform_reconstruction(
+				frames, intial_transformation_matrix, keypointsFrames, final_translation_matrix_vector
 			);
 
-			if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool())
-			{
+			if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool()) {
 				reorganize_all_point_clouds(frames);
 				perform_tsdf_integration(frames, final_translation_matrix_vector);
+			}
+			else {
+				if (settings->value("FINAL_SETTINGS/DRAW_ALL_CAMERA_POSES").toBool())
+					pcdVizualizer->visualizeCameraPoses(final_translation_matrix_vector);
+				if (settings->value("FINAL_SETTINGS/DRAW_ALL_CLOUDS").toBool())
+					pcdVizualizer->visualizePointClouds(frames);
+				if (settings->value("FINAL_SETTINGS/DRAW_ALL_KEYPOINT_CLOUDS").toBool())
+					pcdVizualizer->visualizeKeypointClouds(keypointsFrames);
 			}
 
 			intial_transformation_matrix = final_translation_matrix_vector[final_translation_matrix_vector.size() - 1];
 
-			for (int j = 0; j < final_translation_matrix_vector.size(); j++)
+			for (int j = 0; j < final_translation_matrix_vector.size(); j++) {
 				camera_pose_matrix_vector.push_back(final_translation_matrix_vector[j]);
-
+			}
 		}
 
 		qDebug() << "###########################################";
-		qDebug() << "DONE ITERATION:" << i + 1 << "/" << length / main_step << "PROCESSED TOTAL:" << camera_pose_matrix_vector.size();
+		qDebug() << "DONE ITERATION:" << i + 1 << "/" << length / main_step 
+				 << "PROCESSED TOTAL:" << camera_pose_matrix_vector.size();
 		qDebug() << "###########################################\n";
 	}
 
-	perform_tsdf_meshing(camera_pose_matrix_vector);
+	if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool()) {
+		perform_tsdf_meshing(camera_pose_matrix_vector);
+	}		
 }
 
 void ReconstructionInterface::perform_partition_recursive_reconstruction()
@@ -604,48 +603,17 @@ void ReconstructionInterface::perform_partition_recursive_reconstruction()
 	int middle_index = (int)round((float)main_step / 2.0f);
 
 	qDebug() << "Central clouds indexes:";
-	for (int i = from + middle_index; i <= to - middle_index; i += main_step)
+	for (int i = from + middle_index; i <= to - middle_index; i += main_step) {
 		qDebug() << "  Index:" << i;
-
-	{
-		Frames frames;
-		KeypointsFrames keypointsFrames;
-
-		read_data(from + middle_index, to - middle_index, main_step, frames);
-		filter_all_point_clouds(frames);
-		reorganize_all_point_clouds(frames);
-		calculate_all_keypoint_pairs(frames, keypointsFrames);
-		calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
-		remove_nan_from_all_clouds(frames);
-
-		Matrix4fVector sac_translation_matrix_vector;
-		Matrix4fVector icp_translation_matrix_vector;
-
-		Eigen::Matrix4f intial_transformation_matrix = Eigen::Matrix4f::Identity();
-		perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);
-		perform_icp_registration(frames, keypointsFrames, intial_transformation_matrix, icp_translation_matrix_vector);
-
-		calculate_final_transformation_matrix_vector(
-			sac_translation_matrix_vector,
-			icp_translation_matrix_vector,
-			base_translation_matrix_vector,
-			frames.size()
-		);
-		
-		for (int i = 0; i < frames.size(); i++)
-			pcl::transformPointCloud(
-				*frames[i].pointCloudPtr.get(),
-				*frames[i].pointCloudPtr.get(),
-				base_translation_matrix_vector[i]
-			);
-
-		if (settings->value("FINAL_SETTINGS/DRAW_ALL_CAMERA_POSES").toBool())
-			pcdVizualizer->visualizeCameraPoses(base_translation_matrix_vector);
-		if (settings->value("FINAL_SETTINGS/DRAW_ALL_CLOUDS").toBool())
-			pcdVizualizer->visualizePointClouds(frames);
-		if (settings->value("FINAL_SETTINGS/DRAW_ALL_KEYPOINT_CLOUDS").toBool())
-			pcdVizualizer->visualizeKeypointClouds(keypointsFrames);
 	}
+
+	Frames frames;
+	KeypointsFrames keypointsFrames;
+
+	read_data(from + middle_index, to - middle_index, main_step, frames);
+	perform_reconstruction(
+		frames, Eigen::Matrix4f(Eigen::Matrix4f::Identity()), keypointsFrames, base_translation_matrix_vector
+	);
 
 	Matrix4fVector camera_pose_matrix_vector;
 	for (int index = 0; index < base_translation_matrix_vector.size(); index++)
@@ -677,19 +645,17 @@ void ReconstructionInterface::perform_partition_recursive_reconstruction()
 
 		Matrix4fVector icp_translation_matrix_vector;
 		Eigen::Matrix4f intial_transformation_matrix = Eigen::Matrix4f::Identity();
-		perform_icp_registration(frames, keypointsFrames, intial_transformation_matrix, icp_translation_matrix_vector, middle_index);
+		perform_icp_registration(frames, keypointsFrames, icp_translation_matrix_vector, middle_index);
 
 		int counter = 0;
 		for (int i = 0; i < frames.size(); i++)
 		{
 			Eigen::Matrix4f fin;
-			if (i != middle_index)
-			{
+			if (i != middle_index) {
 				fin = icp_translation_matrix_vector[counter] * sac_translation_matrix_vector[counter];
 				counter++;
 			}
-			else
-			{
+			else {
 				fin = base_translation_matrix_vector[index];
 			}
 			final_translation_matrix_vector.push_back(fin);
@@ -735,6 +701,189 @@ void ReconstructionInterface::perform_partition_recursive_reconstruction()
 
 	if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool())
 		perform_tsdf_meshing(camera_pose_matrix_vector);
+}
+
+void ReconstructionInterface::mergeKeypointsFrames(
+	KeypointsFrames& keypoints_frames_in,
+	KeypointsFrames& loop_ends_keypoint_frames_in,
+	Matrix4fVector& final_translation_matrix_vector_in,
+	CorrespondencesVector& correspondences_vector_out,
+	PcdPtrVector& merged_keypoints_vector_out
+	)
+{
+	for (size_t j = 0; j <= keypoints_frames_in.size(); j++)
+	{
+		PcdPtr new_keypoint_cloud(new Pcd);
+
+		if (j == 0) {
+			pcl::transformPointCloud(
+				*loop_ends_keypoint_frames_in[0].keypointsPcdPair.first,
+				*loop_ends_keypoint_frames_in[0].keypointsPcdPair.first,
+				*final_translation_matrix_vector_in.begin()
+			);
+			for (int i = 0; i < loop_ends_keypoint_frames_in[0].keypointsPcdPair.first.get()->points.size(); i++) {
+				new_keypoint_cloud->push_back(loop_ends_keypoint_frames_in[0].keypointsPcdPair.first->at(i));
+			}
+
+			pcl::Correspondences correspondences;
+			for (size_t i = 0; i < keypoints_frames_in[0].keypointsPcdPair.first->size(); i++)
+			{
+				new_keypoint_cloud->push_back(keypoints_frames_in[0].keypointsPcdPair.first->at(i));
+
+				pcl::Correspondence correspondence;
+				correspondence = keypoints_frames_in[0].keypointsPcdCorrespondences[i];
+				correspondence.index_query = new_keypoint_cloud->size() - 1;
+				correspondences.push_back(correspondence);
+			}
+			correspondences_vector_out.push_back(correspondences);
+		}
+		else if (j == keypoints_frames_in.size()) {
+			for (size_t i = 0; i < keypoints_frames_in[j - 1].keypointsPcdPair.second->size(); i++) {
+				new_keypoint_cloud->push_back(keypoints_frames_in[j - 1].keypointsPcdPair.second->at(i));
+			}
+
+			pcl::transformPointCloud(
+				*loop_ends_keypoint_frames_in[0].keypointsPcdPair.second,
+				*loop_ends_keypoint_frames_in[0].keypointsPcdPair.second,
+				*(final_translation_matrix_vector_in.end() - 1)
+			);
+			pcl::Correspondences correspondences;
+			for (size_t i = 0; i < loop_ends_keypoint_frames_in[0].keypointsPcdPair.second->size(); i++)
+			{
+				new_keypoint_cloud->push_back(loop_ends_keypoint_frames_in[0].keypointsPcdPair.second->at(i));
+
+				PointType a, b;
+				a = new_keypoint_cloud->at(new_keypoint_cloud->size() - 1);
+				b = merged_keypoints_vector_out[0]->points[loop_ends_keypoint_frames_in[0].keypointsPcdCorrespondences[i].index_query];
+
+				pcl::Correspondence correspondence;
+				correspondence.index_query = new_keypoint_cloud->size() - 1;
+				correspondence.index_match = loop_ends_keypoint_frames_in[0].keypointsPcdCorrespondences[i].index_query;
+				correspondence.distance = sqrtf(powf(a.x - b.x, 2.0f) + powf(a.y - b.y, 2.0f) + powf(a.z - b.z, 2.0f));
+				correspondences.push_back(correspondence);
+			}
+			correspondences_vector_out.push_back(correspondences);
+		}
+		else {
+			for (size_t i = 0; i < keypoints_frames_in[j - 1].keypointsPcdPair.second->size(); i++) {
+				new_keypoint_cloud->push_back(keypoints_frames_in[j - 1].keypointsPcdPair.second->at(i));
+			}
+
+			pcl::Correspondences correspondences;
+			for (size_t i = 0; i < keypoints_frames_in[j].keypointsPcdPair.first.get()->points.size(); i++)
+			{
+				new_keypoint_cloud->push_back(keypoints_frames_in[j].keypointsPcdPair.first->at(i));
+
+				pcl::Correspondence correspondence;
+				correspondence = keypoints_frames_in[j].keypointsPcdCorrespondences[i];
+				correspondence.index_query = new_keypoint_cloud->size() - 1;
+				correspondences.push_back(correspondence);
+			}
+			correspondences_vector_out.push_back(correspondences);
+		}
+
+		merged_keypoints_vector_out.push_back(new_keypoint_cloud);
+	}
+}
+
+void ReconstructionInterface::perform_elch_correction(
+	PcdPtrVector& merged_keypoints_vector_in,
+	CorrespondencesVector& merged_correspondences_vector_in,
+	Matrix4fVector& final_translation_matrix_vector_out
+	)
+{
+	qDebug() << "Calculating ELCH";
+
+	Matrix4fVector  elch_final_translation_matrix_vector;
+
+	pcl::registration::ELCH<pcl::PointXYZRGB> elch;
+	for (int i = 0; i < merged_keypoints_vector_in.size(); i++) {
+		elch.addPointCloud(merged_keypoints_vector_in[i]);
+	}
+
+	pcl::registration::ELCH<pcl::PointXYZRGB>::RegistrationPtr reg = elch.getReg();
+	reg->setMaxCorrespondenceDistance(settings->value("SAC_SETTINGS/INLIER_THRESHOLD").toDouble());
+	reg->setMaximumIterations(settings->value("SAC_SETTINGS/MAX_ITERATIONS").toInt());
+	reg->setEuclideanFitnessEpsilon(settings->value("ICP_SETTINGS/EUCLIDEAN_EPSILON").toDouble());
+	reg->setTransformationEpsilon(settings->value("ICP_SETTINGS/TRANSFORMATION_EPSILON").toDouble());
+
+	elch.setLoopStart(0);
+	elch.setLoopEnd(merged_keypoints_vector_in.size() - 1);
+	elch.compute();
+
+	pcl::registration::ELCH<pcl::PointXYZRGB>::LoopGraphPtr loopGraphPtr;
+	loopGraphPtr = elch.getLoopGraph();
+
+	for (int i = 0; i < merged_keypoints_vector_in.size(); i++)
+	{
+		Eigen::Matrix4f elch_trans = Eigen::Matrix4f::Identity();
+		elch_trans = (*loopGraphPtr)[i].transform.matrix();
+		final_translation_matrix_vector_out[i] = elch_trans * final_translation_matrix_vector_out[i];
+
+		elch_final_translation_matrix_vector.push_back(elch_trans);
+	}
+
+	for (size_t i = 0; i < merged_keypoints_vector_in.size(); i++) {
+		pcl::transformPointCloud(
+			*merged_keypoints_vector_in[i], *merged_keypoints_vector_in[i], elch_final_translation_matrix_vector[i]
+		);
+	}
+
+	qDebug() << "Done!";
+}
+
+void ReconstructionInterface::perform_lum_correction(
+	PcdPtrVector& merged_keypoints_vector_in,
+	CorrespondencesVector& merged_correspondences_vector_in,
+	Matrix4fVector& final_translation_matrix_vector_out
+	)
+{
+	qDebug() << "Calculating LUM";
+
+	Matrix4fVector  lum_final_translation_matrix_vector;
+
+	//Converting PCD XYZRGB to XYZ
+	std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> pcd_xyz_vector;
+	for (size_t i = 0; i < merged_keypoints_vector_in.size(); i++) {
+		pcl::PointCloud<pcl::PointXYZ>::Ptr pcd_xyz(new pcl::PointCloud<pcl::PointXYZ>);
+		pcl::copyPointCloud(*merged_keypoints_vector_in[i], *pcd_xyz);
+		pcd_xyz_vector.push_back(pcd_xyz);
+	}
+
+	pcl::registration::LUM<pcl::PointXYZ> lum;
+	for (int i = 0; i < pcd_xyz_vector.size(); i++) { //LUM add PCD's
+		lum.addPointCloud(pcd_xyz_vector[i]);
+	}
+	for (int i = 0; i < pcd_xyz_vector.size(); i++) //LUM add Correspondeces
+	{
+		boost::shared_ptr<pcl::Correspondences> correspondences(new pcl::Correspondences);
+		for (size_t j = 0; j < merged_correspondences_vector_in[i].size(); j++)
+			correspondences->push_back(merged_correspondences_vector_in[i][j]);
+		if (i < pcd_xyz_vector.size() - 1)
+			lum.setCorrespondences(i, i + 1, correspondences);
+		else
+			lum.setCorrespondences(i, 0, correspondences);
+	}
+	lum.setMaxIterations(50);
+	lum.setConvergenceThreshold(0.0);
+	lum.compute();
+
+	for (int i = 0; i < lum.getNumVertices(); i++)
+	{
+		Eigen::Matrix4f lum_trans = Eigen::Matrix4f::Identity();
+		lum_trans = lum.getTransformation(i).matrix();
+		final_translation_matrix_vector_out[i] = lum_trans * final_translation_matrix_vector_out[i];
+
+		lum_final_translation_matrix_vector.push_back(lum_trans);
+	}
+
+	for (size_t i = 0; i < merged_keypoints_vector_in.size(); i++) {
+		pcl::transformPointCloud(
+			*merged_keypoints_vector_in[i], *merged_keypoints_vector_in[i], lum_final_translation_matrix_vector[i]
+		);
+	}
+
+	qDebug() << "Done!";
 }
 
 void ReconstructionInterface::perform_lum_reconstruction()
@@ -818,7 +967,7 @@ void ReconstructionInterface::perform_lum_reconstruction()
 					perform_sac_registration(frames, keypointsFrames, empty_mat, sac_translation_matrix_vector);
 				}
 				if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
-					perform_icp_registration(frames, keypointsFrames, empty_mat, icp_translation_matrix_vector);
+					perform_icp_registration(frames, keypointsFrames, icp_translation_matrix_vector);
 				}
 
 				calculate_final_transformation_matrix_vector(
@@ -839,31 +988,33 @@ void ReconstructionInterface::perform_lum_reconstruction()
 				b.z = final_translation_matrix_vector[1](2, 3);
 
 				float distance = sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2) + powf(a.z - b.z, 2));
-				if (distance > camera_distance_threshold)
+				if (distance > camera_distance_threshold) 
 				{
 					loop_ends_indexes_vector.push_back(std::make_pair(from, cloud_index - loop_step));
-					if (inliersKeypointsFramesVector.size() - 1 > 0)
+					if (inliersKeypointsFramesVector.size() - 1 > 0) {
 						loop_ends_keypoint_frames_vector.push_back(
-						inliersKeypointsFramesVector[inliersKeypointsFramesVector.size() - 2]
-					);
+							inliersKeypointsFramesVector[inliersKeypointsFramesVector.size() - 2]
+						);
+					}
 					break;
 				}
-				else if (cloud_index == to)
+				else if (cloud_index == to) 
 				{
 					loop_ends_indexes_vector.push_back(std::make_pair(from, cloud_index));
-					if (inliersKeypointsFramesVector.size() - 1 > 0)
+					if (inliersKeypointsFramesVector.size() - 1 > 0) {
 						loop_ends_keypoint_frames_vector.push_back(
-						inliersKeypointsFramesVector[inliersKeypointsFramesVector.size() - 2]
-					);
+							inliersKeypointsFramesVector[inliersKeypointsFramesVector.size() - 2]
+						);
+					}
 				}
+
 			}
 		}
 	}
 	else
 	{
 		int din_step = settings->value("FINAL_SETTINGS/LUM_BASED_RECONSTRUCTION_FIXED_STEP").toInt();
-		for (int i = from; i < to; i += din_step)
-		{		
+		for (int i = from; i < to; i += din_step) {		
 			Frames frames;
 			KeypointsFrames keypointsFrames;
 			Matrix4fVector sac_translation_matrix_vector;
@@ -886,7 +1037,7 @@ void ReconstructionInterface::perform_lum_reconstruction()
 				perform_sac_registration(frames, keypointsFrames, empty_mat, sac_translation_matrix_vector);
 			}
 			if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
-				perform_icp_registration(frames, keypointsFrames, empty_mat, icp_translation_matrix_vector);
+				perform_icp_registration(frames, keypointsFrames, icp_translation_matrix_vector);
 			}
 
 			calculate_final_transformation_matrix_vector(
@@ -924,200 +1075,34 @@ void ReconstructionInterface::perform_lum_reconstruction()
 		Frames frames;	
 		KeypointsFrames keypointsFrames;
 		Matrix4fVector  final_translation_matrix_vector;
-		Matrix4fVector  elch_final_translation_matrix_vector;
-		Matrix4fVector  lum_final_translation_matrix_vector;
-		
-		read_data(loop_ends_indexes_vector[index].first, loop_ends_indexes_vector[index].second, step, frames);
-		filter_all_point_clouds(frames);
-		reorganize_all_point_clouds(frames);
-		calculate_all_keypoint_pairs(frames, keypointsFrames);
-		calculate_all_keypoint_pairs_rejection(keypointsFrames, keypointsFrames);
-		remove_nan_from_all_clouds(frames);
-	
-		Matrix4fVector sac_translation_matrix_vector;
-		Matrix4fVector icp_translation_matrix_vector;		
-		if (settings->value("SAC_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
-			perform_sac_registration(frames, keypointsFrames, intial_transformation_matrix, sac_translation_matrix_vector);
-		}
-		if (settings->value("ICP_SETTINGS/CALCULATE_IN_FINAL").toBool()) {
-			perform_icp_registration(frames, keypointsFrames, Eigen::Matrix4f(Eigen::Matrix4f::Identity()), icp_translation_matrix_vector);
+				
+		int loop_length = loop_ends_indexes_vector[index].second - loop_ends_indexes_vector[index].first;
+		if (loop_length < step) {
+			qDebug() << "Error: Loop length:" << loop_length << "is less then a read step:" << step;
+			return;
 		}
 
-		calculate_final_transformation_matrix_vector(
-			sac_translation_matrix_vector,
-			icp_translation_matrix_vector,
-			final_translation_matrix_vector,
-			frames.size()
-		);
+		read_data(loop_ends_indexes_vector[index].first, loop_ends_indexes_vector[index].second, step, frames);
+		perform_reconstruction(frames, intial_transformation_matrix, keypointsFrames, final_translation_matrix_vector);
 		
 		//Mergin pairs of keypoint clouds
-		std::vector<pcl::Correspondences> correspondences_vector;
-		PcdPtrVector   mergedKeypointVector;
-		for (int j = 0; j <= keypointsFrames.size(); j++)
-		{
-			PcdPtr new_keypoint_cloud(new Pcd);
-
-			if (j == 0)
-			{						
-				pcl::transformPointCloud(
-					*loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.first.get(),
-					*loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.first.get(),
-					final_translation_matrix_vector[0]
-				);
-				for (int i = 0; i < loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.first.get()->points.size(); i++)
-					new_keypoint_cloud.get()->points.push_back(loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.first.get()->points[i]);
-
-				pcl::Correspondences correspondences;
-				for (int i = 0; i < keypointsFrames[0].keypointsPcdPair.first.get()->points.size(); i++)
-				{
-					new_keypoint_cloud.get()->points.push_back(keypointsFrames[0].keypointsPcdPair.first.get()->points[i]);
-
-					pcl::Correspondence correspondence;
-					correspondence = keypointsFrames[0].keypointsPcdCorrespondences[i];
-					correspondence.index_query = new_keypoint_cloud.get()->points.size() - 1;
-					correspondences.push_back(correspondence);
-				}
-				correspondences_vector.push_back(correspondences);
-			}		
-			else if (j == keypointsFrames.size())
-			{
-				for (int i = 0; i < keypointsFrames[j - 1].keypointsPcdPair.second.get()->points.size(); i++)
-					new_keypoint_cloud.get()->points.push_back(keypointsFrames[j - 1].keypointsPcdPair.second.get()->points[i]);
-				
-				pcl::transformPointCloud(
-					*loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.second.get(),
-					*loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.second.get(),
-					final_translation_matrix_vector[final_translation_matrix_vector.size() - 1]
-				);
-				pcl::Correspondences correspondences;
-				for (int i = 0; i < loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.second.get()->points.size(); i++)
-				{
-					new_keypoint_cloud.get()->points.push_back(loop_ends_keypoint_frames_vector[index][0].keypointsPcdPair.second.get()->points[i]);
-
-					PointType a, b;
-					a = new_keypoint_cloud.get()->points[new_keypoint_cloud.get()->points.size() - 1];
-					b = mergedKeypointVector[0].get()->points[loop_ends_keypoint_frames_vector[index][0].keypointsPcdCorrespondences[i].index_query];
-
-					pcl::Correspondence correspondence;
-					correspondence.index_query = new_keypoint_cloud.get()->points.size() - 1;
-					correspondence.index_match = loop_ends_keypoint_frames_vector[index][0].keypointsPcdCorrespondences[i].index_query; 
-					correspondence.distance = sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2) + powf(a.z - b.z, 2));
-					correspondences.push_back(correspondence);
-				}
-				correspondences_vector.push_back(correspondences);
-			}
-			else
-			{				
-				for (int i = 0; i < keypointsFrames[j - 1].keypointsPcdPair.second.get()->points.size(); i++)
-					new_keypoint_cloud.get()->points.push_back(keypointsFrames[j - 1].keypointsPcdPair.second.get()->points[i]);
-				
-				pcl::Correspondences correspondences;
-				for (int i = 0; i < keypointsFrames[j].keypointsPcdPair.first.get()->points.size(); i++)
-				{
-					new_keypoint_cloud.get()->points.push_back(keypointsFrames[j].keypointsPcdPair.first.get()->points[i]);
-
-					pcl::Correspondence correspondence;
-					correspondence = keypointsFrames[j].keypointsPcdCorrespondences[i];
-					correspondence.index_query = new_keypoint_cloud.get()->points.size() - 1;
-					correspondences.push_back(correspondence);
-				}
-				correspondences_vector.push_back(correspondences);
-			}
-				
-			new_keypoint_cloud.get()->width  = new_keypoint_cloud.get()->points.size();
-			new_keypoint_cloud.get()->height = 1;
-			mergedKeypointVector.push_back(new_keypoint_cloud);
-		}
+		CorrespondencesVector mergedCorrespondencesVector;
+		PcdPtrVector mergedKeypointVector;
+		mergeKeypointsFrames(
+			keypointsFrames, loop_ends_keypoint_frames_vector[index], final_translation_matrix_vector, mergedCorrespondencesVector, mergedKeypointVector
+		);
 
 		//ELCH correction
-		if (settings->value("FINAL_SETTINGS/LUM_BASED_RECONSTRUCTION_PRE_ELCH").toBool())
-		{	
-			qDebug() << "Calculating ELCH";
-
-			pcl::registration::ELCH<pcl::PointXYZRGB> elch;
-			for (int i = 0; i < mergedKeypointVector.size(); i++)
-				elch.addPointCloud(mergedKeypointVector[i]);
-									
-			pcl::registration::ELCH<pcl::PointXYZRGB>::RegistrationPtr reg = elch.getReg();		
-			double inlier_threshold = settings->value("SAC_SETTINGS/INLIER_THRESHOLD").toDouble();
-			int max_iter = settings->value("SAC_SETTINGS/MAX_ITERATIONS").toInt();
-			double trans_epsilon = settings->value("ICP_SETTINGS/TRANSFORMATION_EPSILON").toDouble();
-			double euclid_epsilon = settings->value("ICP_SETTINGS/EUCLIDEAN_EPSILON").toDouble();
-			reg.get()->setMaxCorrespondenceDistance(inlier_threshold);
-			reg.get()->setMaximumIterations(max_iter);
-			reg.get()->setEuclideanFitnessEpsilon(euclid_epsilon);
-			reg.get()->setTransformationEpsilon(trans_epsilon);
-			
-			elch.setLoopStart(0);
-			elch.setLoopEnd(mergedKeypointVector.size() - 1);
-			elch.compute();
-
-			pcl::registration::ELCH<pcl::PointXYZRGB>::LoopGraphPtr loopGraphPtr;
-			loopGraphPtr = elch.getLoopGraph();
-
-			for (int i = 0; i < mergedKeypointVector.size(); i++)
-			{
-				Eigen::Matrix4f elch_trans = Eigen::Matrix4f::Identity();
-				elch_trans = (*loopGraphPtr)[i].transform.matrix();
-				final_translation_matrix_vector[i] = elch_trans * final_translation_matrix_vector[i];
-
-				elch_final_translation_matrix_vector.push_back(elch_trans);
-			}
-
-			qDebug() << "Done!";
+		if (settings->value("FINAL_SETTINGS/LUM_BASED_RECONSTRUCTION_PRE_ELCH").toBool()) {	
+			perform_elch_correction(mergedKeypointVector, mergedCorrespondencesVector, final_translation_matrix_vector);
 		}
 		
 		//LUM correction
-		if (settings->value("FINAL_SETTINGS/LUM_BASED_RECONSTRUCTION_PRE_LUM").toBool())
-		{
-			qDebug() << "Calculating LUM";
-
-			//Converting PCD XYZRGB to XYZ
-			std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> pcd_xyz_vector;
-			for (int i = 0; i < mergedKeypointVector.size(); i++)
-			{
-				pcl::PointCloud<pcl::PointXYZ>::Ptr pcd_xyz(new pcl::PointCloud<pcl::PointXYZ>);
-				pcl::copyPointCloud(*mergedKeypointVector[i].get(), *pcd_xyz.get());
-				pcd_xyz_vector.push_back(pcd_xyz);
-			}
-
-			pcl::registration::LUM<pcl::PointXYZ> lum;
-			for (int i = 0; i < pcd_xyz_vector.size(); i++) //LUM add PCD's
-				lum.addPointCloud(pcd_xyz_vector[i]);
-			for (int i = 0; i < pcd_xyz_vector.size(); i++) //LUM add Correspondeces
-			{
-				boost::shared_ptr<pcl::Correspondences> correspondences(new pcl::Correspondences);
-				for (int j = 0; j < correspondences_vector[i].size(); j++)
-					correspondences.get()->push_back(correspondences_vector[i][j]);
-				if (i < pcd_xyz_vector.size() - 1)
-					lum.setCorrespondences(i, i + 1, correspondences);
-				else
-					lum.setCorrespondences(i, 0, correspondences);
-			}
-			lum.setMaxIterations(50);
-			lum.setConvergenceThreshold(0.0);
-			lum.compute();
-
-			for (int i = 0; i < lum.getNumVertices(); i++)
-			{
-				Eigen::Matrix4f lum_trans = Eigen::Matrix4f::Identity();
-				lum_trans = lum.getTransformation(i).matrix();
-				final_translation_matrix_vector[i] = lum_trans * final_translation_matrix_vector[i];
-
-				lum_final_translation_matrix_vector.push_back(lum_trans);
-			}
-
-			for (int i = 0; i < mergedKeypointVector.size(); i++)
-				pcl::transformPointCloud(
-					*mergedKeypointVector[i].get(),
-					*mergedKeypointVector[i].get(),
-					lum_final_translation_matrix_vector[i]
-				);
-
-			qDebug() << "Done!";
+		if (settings->value("FINAL_SETTINGS/LUM_BASED_RECONSTRUCTION_PRE_LUM").toBool()) {
+			perform_lum_correction(mergedKeypointVector, mergedCorrespondencesVector, final_translation_matrix_vector);
 		}
 	
-		intial_transformation_matrix = final_translation_matrix_vector[final_translation_matrix_vector.size() - 1];
+		intial_transformation_matrix = *(final_translation_matrix_vector.end() - 1);
 
 		/*
 		Step 3:
@@ -1125,17 +1110,16 @@ void ReconstructionInterface::perform_lum_reconstruction()
 		2) Perform point cloud visualization if needed
 		*/
 		KeypointsFrames mergedKeypointFrames;
-		for (int i = 1; i < mergedKeypointVector.size(); i++)
-		{
+		for (int i = 1; i < mergedKeypointVector.size(); i++) {
 			KeypointsFrame keypointsFrame;
 			keypointsFrame.keypointsPcdPair = std::make_pair(mergedKeypointVector[i - 1], mergedKeypointVector[i]);
-			keypointsFrame.keypointsPcdCorrespondences = correspondences_vector[i - 1];
+			keypointsFrame.keypointsPcdCorrespondences = mergedCorrespondencesVector[i - 1];
 			mergedKeypointFrames.push_back(keypointsFrame);
 		}
 
 		KeypointsFrame keypointsFrame;
-		keypointsFrame.keypointsPcdPair = std::make_pair(mergedKeypointVector[mergedKeypointVector.size() - 1], mergedKeypointVector[0]);
-		keypointsFrame.keypointsPcdCorrespondences = correspondences_vector[correspondences_vector.size() - 1];
+		keypointsFrame.keypointsPcdPair = std::make_pair(*(mergedKeypointVector.end() - 1), mergedKeypointVector[0]);
+		keypointsFrame.keypointsPcdCorrespondences = *(mergedCorrespondencesVector.end() - 1);
 		mergedKeypointFrames.push_back(keypointsFrame);
 
 		if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool())

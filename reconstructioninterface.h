@@ -115,7 +115,6 @@ private:
 	void perform_icp_registration(
 		Frames&			 frames, 
 		KeypointsFrames& keypointsFrames,
-		Eigen::Matrix4f& intial_transformation_matrix,
 		Matrix4fVector&  icp_translation_matrix_vector,
 		int middle_index = -1
 	);
@@ -138,9 +137,35 @@ private:
 
 	//------------------Registration END----------------------
 
+	void perform_reconstruction(
+		Frames& frames_in,
+		Eigen::Matrix4f& intial_transformation_matrix,
+		KeypointsFrames& keypoints_frames_out,
+		Matrix4fVector& final_translation_matrix_vector_out,
+		int middle_index = -1
+	);
 	void perform_reconstruction();
 	void perform_iterative_reconstruction();
 	void perform_partition_recursive_reconstruction();
+
+	//LUM based reconstruction
+	void mergeKeypointsFrames(
+		KeypointsFrames& keypoints_frames_in,
+		KeypointsFrames& loop_ends_keypoint_frames_in,
+		Matrix4fVector& final_translation_matrix_vector_in,
+		CorrespondencesVector& correspondences_vector_out,
+		PcdPtrVector& merged_keypoints_vector_out
+	);
+	void perform_elch_correction(
+		PcdPtrVector& merged_keypoints_vector_in,
+		CorrespondencesVector& merged_correspondences_vector_in,
+		Matrix4fVector& final_translation_matrix_vector_out
+	);
+	void perform_lum_correction(
+		PcdPtrVector& merged_keypoints_vector_in,
+		CorrespondencesVector& merged_correspondences_vector_in,
+		Matrix4fVector& final_translation_matrix_vector_out
+	);
 	void perform_lum_reconstruction();
 
 public slots:

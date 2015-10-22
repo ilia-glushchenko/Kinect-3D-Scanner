@@ -537,7 +537,7 @@ void OpenNiInterface::rotate_and_take_images()
 	rotate(settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
 	start_stream();
 
-	rotate(-1);
+	rotate(-1 * settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
 	shutdown_rotation();	
 }
 
