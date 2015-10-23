@@ -188,7 +188,13 @@ void OpenNiInterface::initialize()
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a color stream");
 
 		if (record_stream && !stream_from_record) {
-			rc = recorder.create("recording.oni");
+			QString filePath =
+				QFileInfo(settings->fileName()).absolutePath() + "/" +
+				settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "/" +
+				settings->value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString();
+
+			rc = recorder.create(filePath.toStdString().c_str());
+
 			if (rc != STATUS_OK)
 				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create recording!");
 
@@ -258,7 +264,7 @@ void OpenNiInterface::read_frame()
 			colorFrameMat.data,
 			colorBuffer,
 			3 * colorFrame.getHeight()*colorFrame.getWidth()*sizeof(uint8_t)
-			);
+		);
 
 		cvtColor(colorFrameMat, colorFrameMat, CV_BGR2RGB);
 
@@ -304,8 +310,8 @@ void OpenNiInterface::read_frame()
 		{
 			QString pcd_image_filename_pattern =
 				QFileInfo(settings->fileName()).absolutePath() + "/" +
-				settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
-				settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
+						  settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
+						  settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
 			imwrite(pcd_image_filename_pattern.arg(depthFrame.getFrameIndex()).toStdString(), colorFrameMat);
 
 			vector<cv::Vec3f> worldCoords;
@@ -319,8 +325,8 @@ void OpenNiInterface::read_frame()
 
 			QString pcd_filename_pattern =
 				QFileInfo(settings->fileName()).absolutePath() + "/" +
-				settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
-				settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();			
+						  settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
+						  settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();			
 			PclIO::save_one_point_cloud(pcd_filename_pattern.arg(depthFrame.getFrameIndex()), point_cloud_ptr);
 
 			worldCoordsVector.pop_back();

@@ -3,9 +3,11 @@
 
 #include <QtWidgets/QMainWindow>
 #include <QWidget>
+#include <QFrame>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QGroupBox>
 #include <QSlider>
 #include <QCheckBox>
 #include <QStatusBar>
@@ -78,18 +80,16 @@ public slots:
 	void slot_make_project();
 	void slot_open_project();
 
-	void slot_initialize();
+	void slot_start_stream();
+	void slot_start_rotation_stream();
+	void slot_take_long_images();
+	void slot_take_one_long_image();
+	void slot_save_long_image_data();
 
-	void slot_take_images();
-	void slot_take_op_images();
-	void slot_take_one_op_image();
-	void slot_save_data();
-
-	void slot_draw_scene3d_model();	
+	void slot_perform_reconstruction();	
 	void slot_change_pair(int);
 
 signals:
-	void signal_take_one_image();
 	void signal_write_com_port(char);
 
 };

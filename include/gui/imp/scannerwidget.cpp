@@ -3,6 +3,9 @@
 ScannerWidget::ScannerWidget(QWidget *parent)
 	:QMainWindow(parent)
 {	
+	setWindowFlags(Qt::CustomizeWindowHint 
+				   | Qt::WindowCloseButtonHint 
+				   | Qt::WindowStaysOnTopHint);
 	initializeOpenDialogInterface();
 }
 
@@ -30,14 +33,22 @@ void ScannerWidget::initializeMainInterface()
 	connect(makeProjectButton, SIGNAL(clicked()), this, SLOT(slot_make_project()));
 	connect(openProjectButton, SIGNAL(clicked()), this, SLOT(slot_open_project()));
 
-	initButton = new QPushButton("Start Stream", this);
-	connect(initButton, SIGNAL(clicked()), this, SLOT(slot_initialize()));
+	initButton			 = new QPushButton("Start Stream", this);
+	takeImagesButton	 = new QPushButton("Start Rotation Stream", this);
+	takeOpImagesButton	 = new QPushButton("Take Long Images", this);
+	takeOneOpImageButton = new QPushButton("Take One Long Image", this);
+	saveDataButton		 = new QPushButton("Save Long Image Data", this);
+	connect(initButton, SIGNAL(clicked()), this, SLOT(slot_start_stream()));
+	connect(takeImagesButton, SIGNAL(clicked()), this, SLOT(slot_start_rotation_stream()));
+	connect(takeOpImagesButton, SIGNAL(clicked()), this, SLOT(slot_take_long_images()));
+	connect(takeOneOpImageButton, SIGNAL(clicked()), this, SLOT(slot_take_one_long_image()));
+	connect(saveDataButton, SIGNAL(clicked()), this, SLOT(slot_save_long_image_data()));
 
-	recCheck		  = new QCheckBox("Recording streams", this);
-	streamFromCheck	  = new QCheckBox("Stream from recording", this);
-	recToPclDataCheck = new QCheckBox("Save recording as PCL data", this);
-	undistCheck		  = new QCheckBox("Undistortion", this);
-	bilateralCheck    = new QCheckBox("Use Bilateral filter", this);
+	recCheck			= new QCheckBox("Record stream", this);
+	streamFromCheck		= new QCheckBox("Replay recorded stream", this);
+	recToPclDataCheck	= new QCheckBox("Save stream as PCD", this);
+	undistCheck			= new QCheckBox("Use lense undistortion", this);
+	bilateralCheck		= new QCheckBox("Use Bilateral filter", this);
 	connect(recCheck, SIGNAL(stateChanged(int)),
 		openniInterface, SLOT(slot_set_record_stream(int)));
 	connect(streamFromCheck, SIGNAL(stateChanged(int)),
@@ -54,18 +65,10 @@ void ScannerWidget::initializeMainInterface()
 	undistCheck->setChecked(settings->value("STREAM_SETTINGS/ENABLE_UNDISTORTION").toBool());
 	bilateralCheck->setChecked(settings->value("STREAM_SETTINGS/ENABLE_BILATERAL_FILTER").toBool());
 
-	takeImagesButton	 = new QPushButton("Take Images", this);
-	takeOpImagesButton	 = new QPushButton("Take OP Images", this);
-	takeOneOpImageButton = new QPushButton("Take One OP Image", this);
-	saveDataButton		 = new QPushButton("Save Data", this);
-	connect(takeImagesButton, SIGNAL(clicked()), this, SLOT(slot_take_images()));
-	connect(takeOpImagesButton, SIGNAL(clicked()), this, SLOT(slot_take_op_images()));
-	connect(takeOneOpImageButton, SIGNAL(clicked()), this, SLOT(slot_take_one_op_image()));
-	connect(saveDataButton, SIGNAL(clicked()), this, SLOT(slot_save_data()));
 
-	drawScene3dModelButton = new QPushButton("Draw 3D model", this);
+	drawScene3dModelButton = new QPushButton("Perform Reconstruction", this);
 	connect(drawScene3dModelButton, SIGNAL(clicked()),
-		this, SLOT(slot_draw_scene3d_model()));
+		this, SLOT(slot_perform_reconstruction()));
 
 	reconstructCheck	 = new QCheckBox("Reconstruct", this);
 	undistrtionCheck	 = new QCheckBox("Undistortion", this);
@@ -113,24 +116,47 @@ void ScannerWidget::initializeDebugInterface()
 
 	vBoxLayout->addWidget(makeProjectButton);
 	vBoxLayout->addWidget(openProjectButton);
-	vBoxLayout->addWidget(initButton);
-	vBoxLayout->addWidget(recCheck);
-	vBoxLayout->addWidget(streamFromCheck);
-	vBoxLayout->addWidget(recToPclDataCheck);
-	vBoxLayout->addWidget(undistCheck);
-	vBoxLayout->addWidget(bilateralCheck);
 
+	QFrame* line = new QFrame(this);
+	line->setObjectName(QString::fromUtf8("line"));
+	line->setGeometry(QRect(320, 150, 118, 3));
+	line->setFrameShape(QFrame::HLine);
+	line->setFrameShadow(QFrame::Sunken);
+	vBoxLayout->addWidget(line);
+
+	vBoxLayout->addWidget(initButton);
 	vBoxLayout->addWidget(takeImagesButton);
 	vBoxLayout->addWidget(takeOpImagesButton);
 	vBoxLayout->addWidget(takeOneOpImageButton);
 	vBoxLayout->addWidget(saveDataButton);
 
+	QGroupBox *groupBox = new QGroupBox(tr("Stream settings"));
+	QVBoxLayout* groupBoxVBoxLayout = new QVBoxLayout;
+	groupBoxVBoxLayout->addWidget(recCheck);
+	groupBoxVBoxLayout->addWidget(streamFromCheck);
+	groupBoxVBoxLayout->addWidget(recToPclDataCheck);
+	groupBoxVBoxLayout->addWidget(undistCheck);
+	groupBoxVBoxLayout->addWidget(bilateralCheck);
+	groupBox->setLayout(groupBoxVBoxLayout);
+	vBoxLayout->addWidget(groupBox);
+
+	QFrame* line2 = new QFrame(this);
+	line2->setObjectName(QString::fromUtf8("line"));
+	line2->setGeometry(QRect(320, 150, 118, 3));
+	line2->setFrameShape(QFrame::HLine);
+	line2->setFrameShadow(QFrame::Sunken);
+	vBoxLayout->addWidget(line2);
+
 	vBoxLayout->addWidget(drawScene3dModelButton);
-	vBoxLayout->addWidget(reconstructCheck);
-	vBoxLayout->addWidget(undistrtionCheck);
-	vBoxLayout->addWidget(bilateralFilterCheck);
-	vBoxLayout->addWidget(statFilterCheck);
-	vBoxLayout->addWidget(mlsFilterCheck);
+	QGroupBox *groupBox1 = new QGroupBox(tr("Reconstruction settings"));
+	QVBoxLayout* groupBox1VBoxLayout = new QVBoxLayout;
+	//groupBox1VBoxLayout->addWidget(reconstructCheck);
+	groupBox1VBoxLayout->addWidget(undistrtionCheck);
+	groupBox1VBoxLayout->addWidget(bilateralFilterCheck);
+	groupBox1VBoxLayout->addWidget(statFilterCheck);
+	groupBox1VBoxLayout->addWidget(mlsFilterCheck);
+	groupBox1->setLayout(groupBox1VBoxLayout);
+	vBoxLayout->addWidget(groupBox1);
 	
 	centralWidget->setLayout(vBoxLayout);
 	setCentralWidget(centralWidget);
@@ -150,12 +176,24 @@ void ScannerWidget::initializeReleaseInterface()
 	vBoxLayout = new QVBoxLayout();
 	vBoxLayout->addWidget(makeProjectButton);
 	vBoxLayout->addWidget(openProjectButton);
-	if (settings->value("OPENNI_SETTINGS/ROTATION_ENABLE").toBool()) {
-		vBoxLayout->addWidget(takeImagesButton);
-	}
-	else {
-		vBoxLayout->addWidget(initButton);
-	}
+
+	QFrame* line = new QFrame(this);
+	line->setObjectName(QString::fromUtf8("line"));
+	line->setGeometry(QRect(320, 150, 118, 3));
+	line->setFrameShape(QFrame::HLine);
+	line->setFrameShadow(QFrame::Sunken);
+	vBoxLayout->addWidget(line);
+
+	vBoxLayout->addWidget(initButton);
+	vBoxLayout->addWidget(takeImagesButton);
+
+	QFrame* line1 = new QFrame(this);
+	line1->setObjectName(QString::fromUtf8("line"));
+	line1->setGeometry(QRect(320, 150, 118, 3));
+	line1->setFrameShape(QFrame::HLine);
+	line1->setFrameShadow(QFrame::Sunken);
+	vBoxLayout->addWidget(line1);
+
 	vBoxLayout->addWidget(drawScene3dModelButton);
 
 	centralWidget->setLayout(vBoxLayout);
@@ -194,8 +232,7 @@ void ScannerWidget::slot_make_project()
 		}
 		else {
 			qDebug() << "Error: Default project does not exists!";
-		}
-		
+		}		
 	}
 }
 
@@ -208,7 +245,7 @@ void ScannerWidget::slot_open_project()
 		initializeSettings();
 		initializeReconstruction();
 
-		setWindowTitle(QString("Project: %1").arg(settings->value("PROJECT_SETTINGS").toString()));
+		setWindowTitle(QString("Project: %1").arg(settings->value("PROJECT_SETTINGS/NAME").toString()));
 		initializeMainInterface();
 		if (settings->value("PROJECT_SETTINGS/DEBUG_INTERFACE").toBool()) {
 			initializeDebugInterface();
@@ -219,7 +256,7 @@ void ScannerWidget::slot_open_project()
 	}
 }
 
-void ScannerWidget::slot_initialize()
+void ScannerWidget::slot_start_stream()
 {
 	if (!openniInterface->isInit())
 	{
@@ -247,7 +284,7 @@ void ScannerWidget::slot_initialize()
 	}
 }
 
-void ScannerWidget::slot_take_images()
+void ScannerWidget::slot_start_rotation_stream()
 {
 	if (!openniInterface->isInit())
 	{
@@ -259,7 +296,7 @@ void ScannerWidget::slot_take_images()
 			streamFromCheck->setDisabled(true);
 			recToPclDataCheck->setDisabled(true);
 
-			initButton->setText("Stop");
+			takeImagesButton->setText("Stop Rotation Stream");
 			openniInterface->start_rotation_stream();
 		}
 	}
@@ -271,11 +308,11 @@ void ScannerWidget::slot_take_images()
 		streamFromCheck->setDisabled(false);
 		recToPclDataCheck->setDisabled(false);
 
-		initButton->setText("Take Images");
+		takeImagesButton->setText("Start Rotation Stream");
 	}
 }
 
-void ScannerWidget::slot_take_op_images()
+void ScannerWidget::slot_take_long_images()
 {
 	if (!openniInterface->isInit())
 	{
@@ -287,7 +324,7 @@ void ScannerWidget::slot_take_op_images()
 			streamFromCheck->setDisabled(true);
 			recToPclDataCheck->setDisabled(true);
 
-			initButton->setText("Stop");
+			initButton->setText("Stop Taking Long Images");
 			openniInterface->start_iterative_rotation_stream();
 		}
 	}
@@ -299,11 +336,11 @@ void ScannerWidget::slot_take_op_images()
 		streamFromCheck->setDisabled(false);
 		recToPclDataCheck->setDisabled(false);
 
-		initButton->setText("Start stream");
+		initButton->setText("Start Stream");
 	}
 }
 
-void ScannerWidget::slot_take_one_op_image()
+void ScannerWidget::slot_take_one_long_image()
 {
 	openniInterface->initialize_interface();
 	if (openniInterface->isInit())
@@ -323,20 +360,21 @@ void ScannerWidget::slot_take_one_op_image()
 	openniInterface->shutdown_interface();
 }
 
-void ScannerWidget::slot_save_data()
+void ScannerWidget::slot_save_long_image_data()
 {
 	openniInterface->save_optimized_images();
 }
 
-void ScannerWidget::slot_draw_scene3d_model()
+void ScannerWidget::slot_perform_reconstruction()
 {
 	reconstructionInterface->slot_perform_reconstruction();
 
 	if (settings->value("CPU_TSDF_SETTINGS/ENABLE_IN_FINAL").toBool() == false
 		&& settings->value("PROJECT_SETTINGS/DEBUG_INTERFACE").toBool())
 	{
-		if (slider->isHidden()) 
-			slider->show();
+		//Does not work for now
+		//if (slider->isHidden()) 
+		//	slider->show();
 	}	
 }
 
