@@ -1,4 +1,4 @@
-#include "scannerwidget.h"
+#include <gui/scannerwidget.h>
 #include <QtWidgets/QApplication>
 
 int main(int argc, char *argv[])
