@@ -27,13 +27,16 @@ public:
 	~OpenNiInterface();
 
 	void load_calibration_data();
+
 	void initialize_interface();
+	void shutdown_interface();
+
 	void start_stream();
 	void start_rotation_stream();
-	void start_iterative_rotation_stream();
-	void take_one_optimized_image();
-	void save_optimized_images();
-	void shutdown_interface();
+
+	void take_long_images();
+	void take_one_long_image();
+	void save_long_image_data();
 
 	bool isInit();
 	void set_stream_from_record(bool);
@@ -48,6 +51,7 @@ private:
 	QSerialPort* serial;
 	bool device_inited;
 
+
 	//###############################################################
 
 	bool stream_from_record;
@@ -55,6 +59,7 @@ private:
 	bool stream_undistortion;
 	bool stream_bilateral;
 	bool record_to_pcd_data;
+
 
 	//###############################################################
 
@@ -67,6 +72,7 @@ private:
 	openni::VideoStream   depthStream;
 	openni::Recorder	  recorder;
 	openni::VideoFrameRef frame;
+
 
 	//###############################################################
 
@@ -81,14 +87,16 @@ private:
 	std::vector<std::vector<cv::Vec3f>> worldCoordsVector;
 	std::vector<std::vector<cv::Vec3f>> bufferWorldCoordsVector;
 
+
 	//###############################################################
 
 	void initialize();
 	void shutdown();
 
-	void read_frame();
+	void stream();
 	void take_one_image();
 	void take_one_optimized_image(int number);
+
 	void initialize_rotation();
 	void shutdown_rotation();
 	void rotate(int angle);
@@ -97,16 +105,17 @@ private:
 
 	void show_depth_map(DepthMap, QString = "title");
 
+
 	//###############################################################
 
 	void apply_undistortion_to_depthmap(
 		openni::DepthPixel* src_depth_pixels,
 		openni::DepthPixel* dest_depth_pixels
-		);
+	);
 	void apply_bilateral_filter(
 		openni::DepthPixel* src_depth_pixels,
 		openni::DepthPixel* dest_depth_pixels
-		);
+	);
 
 
 	//###############################################################

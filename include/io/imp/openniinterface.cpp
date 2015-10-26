@@ -8,14 +8,15 @@
 
 #define INIT_PAUSE_TIME 2500
 
+
 OpenNiInterface::OpenNiInterface(QObject *parent, QSettings* parent_settings)
 	: ScannerBase(parent, parent_settings)
 {
-	stream_from_record = false;
-	record_stream = false;
+	stream_from_record	= false;
+	record_stream		= false;
 	stream_undistortion = false;
-	stream_bilateral = false;
-	record_to_pcd_data = false;
+	stream_bilateral	= false;
+	record_to_pcd_data	= false;
 
 	device_inited = false;
 	serial = new QSerialPort(this);
@@ -28,13 +29,9 @@ OpenNiInterface::~OpenNiInterface()
 	shutdown_interface();
 }
 
+
 //###############################################################
 
-void OpenNiInterface::initialize_interface()
-{
-	if (device_inited == false)
-		initialize();
-}
 void OpenNiInterface::load_calibration_data()
 {
 	calib_matrix = (CvMat*)cvLoad(
@@ -48,29 +45,56 @@ void OpenNiInterface::load_calibration_data()
 		settings->value("OPENNI_SETTINGS/DIST_COEFF_NAME").toString()).toStdString().c_str()
 	);
 }
+
+
+void OpenNiInterface::initialize_interface()
+{
+	if (device_inited == false) {
+		initialize();
+	}
+}
+
+void OpenNiInterface::shutdown_interface()
+{
+	if (device_inited) {
+		shutdown();
+	}
+}
+
+
 void OpenNiInterface::start_stream()
 {
-	if (device_inited)
-		read_frame();
+	if (device_inited) {
+		stream();
+	}
 }
+
 void OpenNiInterface::start_rotation_stream()
 {
-	if (device_inited)
+	if (device_inited) {
 		rotate_and_take_images();
+	}
 }
-void OpenNiInterface::start_iterative_rotation_stream()
+
+
+void OpenNiInterface::take_long_images()
 {
-	if (device_inited)
+	if (device_inited) {
 		rotate_and_take_optimized_images();
+	}
 }
-void OpenNiInterface::take_one_optimized_image()
+
+void OpenNiInterface::take_one_long_image()
 {
-	if (device_inited)
+	if (device_inited) {
 		take_one_optimized_image(settings->value("OP_REC/NUMBER").toInt());
+	}
 }
-void OpenNiInterface::save_optimized_images()
+
+void OpenNiInterface::save_long_image_data()
 {
 	qDebug() << "Saving data...";
+
 	for (int i = 0; i < worldCoordsVector.size(); i++)
 	{
 		QString pcd_image_filename_pattern =
@@ -88,13 +112,10 @@ void OpenNiInterface::save_optimized_images()
 			settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();
 		PclIO::save_one_point_cloud(pcd_filename_pattern.arg(i), point_cloud_ptr);
 	}
+
 	qDebug() << "Done!";
 }
-void OpenNiInterface::shutdown_interface()
-{
-	if (device_inited)
-		shutdown();
-}
+
 
 //###############################################################
 
@@ -102,26 +123,32 @@ bool OpenNiInterface::isInit()
 {
 	return device_inited;
 }
+
 void OpenNiInterface::set_stream_from_record(bool value)
 {
 	stream_from_record = value;
 }
+
 void OpenNiInterface::set_record_stream(bool value)
 {
 	record_stream = value;
 }
+
 void OpenNiInterface::set_stream_undistortion(bool value)
 {
 	stream_undistortion = value;
 }
+
 void OpenNiInterface::set_stream_bilateral(bool value)
 {
 	stream_bilateral = value;
 }
+
 void OpenNiInterface::set_record_to_pcd(bool value)
 {
 	record_to_pcd_data = value;
 }
+
 
 //###############################################################
 
@@ -129,6 +156,7 @@ void OpenNiInterface::initialize()
 {
 	using namespace openni;
 
+	qDebug() << "Initialization...";
 	QString openni_out_text = settings->value("OPENNI_SETTINGS/OUT_TEXT").toString();
 
 	rc = OpenNI::initialize();
@@ -147,8 +175,7 @@ void OpenNiInterface::initialize()
 			rc = STATUS_ERROR;
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open recording!");
 		}
-		else
-		{
+		else {
 			rc = device.open(filePath.toStdString().c_str());
 			PlaybackControl* pbc = device.getPlaybackControl();
 			pbc->setRepeatEnabled(settings->value("OPENNI_SETTINGS/REPEAT_RECORDING").toBool());
@@ -161,31 +188,42 @@ void OpenNiInterface::initialize()
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open device!");
 		}
 	}
+	else
+	{
+		qDebug() << QString("%1 %2").arg(openni_out_text).arg("Driver initializatioin failed");
+		return;
+	}
 
 	if (rc == STATUS_OK) {
 		rc = device.setDepthColorSyncEnabled(true);
-		if (rc != STATUS_OK)
+		if (rc != STATUS_OK) {
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't sync color and depth frames");
+		}
 
 		rc = depthStream.create(device, SENSOR_DEPTH);
-		if (rc != STATUS_OK)
+		if (rc != STATUS_OK) {
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create a depth stream");
+		}
 
 		rc = colorStream.create(device, SENSOR_COLOR);
-		if (rc != STATUS_OK)
+		if (rc != STATUS_OK) {
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create a color stream");
+		}
 
 		rc = device.setImageRegistrationMode(IMAGE_REGISTRATION_DEPTH_TO_COLOR);
-		if (rc != STATUS_OK)
+		if (rc != STATUS_OK) {
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't enable registration depth to color");
+		}
 
 		rc = depthStream.start();
-		if (rc != STATUS_OK)
+		if (rc != STATUS_OK) {
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a depth stream");
+		}
 
 		rc = colorStream.start();
-		if (rc != STATUS_OK)
+		if (rc != STATUS_OK) {
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a color stream");
+		}
 
 		if (record_stream && !stream_from_record) {
 			QString filePath =
@@ -195,20 +233,24 @@ void OpenNiInterface::initialize()
 
 			rc = recorder.create(filePath.toStdString().c_str());
 
-			if (rc != STATUS_OK)
+			if (rc != STATUS_OK) {
 				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create recording!");
+			}
 
 			rc = recorder.attach(colorStream);
-			if (rc != STATUS_OK)
+			if (rc != STATUS_OK) {
 				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't attach color stream!");
+			}
 
 			rc = recorder.attach(depthStream);
-			if (rc != STATUS_OK)
+			if (rc != STATUS_OK) {
 				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't attach depth stream!");
+			}
 
 			rc = recorder.start();
-			if (rc != STATUS_OK)
+			if (rc != STATUS_OK) {
 				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start recorder!");
+			}
 		}
 
 		if (rc == STATUS_OK) {
@@ -216,16 +258,18 @@ void OpenNiInterface::initialize()
 			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Initialized successfully!");
 		}
 	}
+
+	qDebug() << "Done!";
 }
 
 void OpenNiInterface::shutdown()
 {
 	using namespace openni;
 
+	qDebug() << "Shutdown...";
 	QString openni_out_text = settings->value("OPENNI_SETTINGS/OUT_TEXT").toString();
 
-	if (record_stream)
-	{
+	if (record_stream) {
 		recorder.stop();
 		recorder.destroy();
 	}
@@ -243,7 +287,8 @@ void OpenNiInterface::shutdown()
 	qDebug() << QString("%1 %2").arg(openni_out_text).arg("Shutdown successful!");
 }
 
-void OpenNiInterface::read_frame()
+
+void OpenNiInterface::stream()
 {
 	using namespace openni;
 	using namespace cv;
@@ -477,6 +522,7 @@ void OpenNiInterface::take_one_optimized_image(int number)
 	show_depth_map(depthMapVector[depthMapVector.size() - 1], QString("%1").arg(rand()));
 }
 
+
 void OpenNiInterface::initialize_rotation()
 {
 	serial->setPortName(
@@ -486,8 +532,7 @@ void OpenNiInterface::initialize_rotation()
 
 	if (!serial->open(QIODevice::WriteOnly)) {
 		qDebug() << QObject::tr("Failed to open port %1, error: %2").arg(
-			settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()).arg(serial->errorString()
-			);
+			settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()).arg(serial->errorString());
 		return;
 	}
 
@@ -540,9 +585,11 @@ void OpenNiInterface::rotate_and_take_images()
 {
 	initialize_rotation();
 
+	qDebug() << "Rotate:" << settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt();
 	rotate(settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
 	start_stream();
 
+	qDebug() << "Return:" << -settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt();
 	rotate(-1 * settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
 	shutdown_rotation();	
 }
@@ -565,8 +612,9 @@ void OpenNiInterface::rotate_and_take_optimized_images()
 	rotate(-1);
 	shutdown_rotation();
 
-	save_optimized_images();
+	save_long_image_data();
 }
+
 
 void OpenNiInterface::show_depth_map(DepthMap depthMap, QString title)
 {
@@ -650,6 +698,7 @@ void OpenNiInterface::show_depth_map(DepthMap depthMap, QString title)
 	imshow(QString("DepthMap %1").arg(title).toStdString(), depthFrameMat);
 }
 
+
 //###############################################################
 
 void OpenNiInterface::apply_undistortion_to_depthmap(
@@ -708,6 +757,7 @@ void OpenNiInterface::apply_bilateral_filter(
 			dest_depth_pixels[x + y*WIDTH] =
 			static_cast<uint16_t>(round(img_res.at<float>(y, x)));
 }
+
 
 //###############################################################
 
@@ -881,6 +931,7 @@ void OpenNiInterface::depth_map_to_point_cloud(
 		}
 }
 
+
 //###############################################################
 
 void  OpenNiInterface::slot_set_stream_from_record(int value)
@@ -890,6 +941,7 @@ void  OpenNiInterface::slot_set_stream_from_record(int value)
 	else
 		set_stream_from_record(true);
 }
+
 void  OpenNiInterface::slot_set_record_stream(int value)
 {
 	if (value == 0)
@@ -897,6 +949,7 @@ void  OpenNiInterface::slot_set_record_stream(int value)
 	else
 		set_record_stream(true);
 }
+
 void  OpenNiInterface::slot_set_stream_undistortion(int value)
 {
 	if (value == 0)
@@ -904,6 +957,7 @@ void  OpenNiInterface::slot_set_stream_undistortion(int value)
 	else
 		set_stream_undistortion(true);
 }
+
 void  OpenNiInterface::slot_set_stream_bilateral(int value)
 {
 	if (value == 0)
@@ -911,6 +965,7 @@ void  OpenNiInterface::slot_set_stream_bilateral(int value)
 	else
 		set_stream_bilateral(true);
 }
+
 void  OpenNiInterface::slot_set_record_to_pcd(int value)
 {
 	if (value == 0)

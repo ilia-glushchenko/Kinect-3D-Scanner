@@ -324,8 +324,8 @@ void ScannerWidget::slot_take_long_images()
 			streamFromCheck->setDisabled(true);
 			recToPclDataCheck->setDisabled(true);
 
-			initButton->setText("Stop Taking Long Images");
-			openniInterface->start_iterative_rotation_stream();
+			takeOpImagesButton->setText("Stop Taking Long Images");
+			openniInterface->take_long_images();
 		}
 	}
 	else
@@ -336,7 +336,7 @@ void ScannerWidget::slot_take_long_images()
 		streamFromCheck->setDisabled(false);
 		recToPclDataCheck->setDisabled(false);
 
-		initButton->setText("Start Stream");
+		takeOpImagesButton->setText("Start Taking Long Images");
 	}
 }
 
@@ -349,7 +349,7 @@ void ScannerWidget::slot_take_one_long_image()
 		streamFromCheck->setDisabled(true);
 		recToPclDataCheck->setDisabled(true);
 
-		openniInterface->take_one_optimized_image();
+		openniInterface->take_one_long_image();
 
 		recCheck->setDisabled(false);
 		streamFromCheck->setDisabled(false);
@@ -362,7 +362,7 @@ void ScannerWidget::slot_take_one_long_image()
 
 void ScannerWidget::slot_save_long_image_data()
 {
-	openniInterface->save_optimized_images();
+	openniInterface->save_long_image_data();
 }
 
 void ScannerWidget::slot_perform_reconstruction()
