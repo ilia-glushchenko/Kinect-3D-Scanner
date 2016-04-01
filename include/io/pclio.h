@@ -1,40 +1,41 @@
 #ifndef PCLIO_H
 #define PCLIO_H
 
-#include <QObject>
 #include <QString>
-#include <QDebug>
 
 #include <pcl/io/pcd_io.h>
-#include <pcl/io/ply_io.h>
+#include <pcl/point_cloud.h>
+#include <pcl/PolygonMesh.h>
+#include <boost/shared_ptr.hpp>
 
-#include <core/base/types.h>
-
-class PclIO : public QObject
+namespace pclio
 {
-	Q_OBJECT
+	template< typename PointT > 
+	void save_one_point_cloud(
+		const QString & filename,
+		const boost::shared_ptr<pcl::PointCloud<PointT>> & point_cloud_ptr
+	);
 
-public:
-	PclIO(QObject *parent);
+	void save_one_polygon_mesh(
+		const QString & filename,
+		const pcl::PolygonMesh & mesh
+	);
 
-	static void save_one_point_cloud(
-		QString filename,
-		PcdPtr point_cloud_ptr
+	template< typename PointT > 
+	void save_point_cloud_vector(
+		const QString & filename_pattern,
+		const std::vector<boost::shared_ptr<pcl::PointCloud<PointT>>> & point_cloud_vector
 	);
-	static void save_one_polygon_mesh(
-		QString filename,
-		pcl::PolygonMesh& mesh
+
+	template< typename PointT >
+	void load_one_point_cloud(
+		const QString & filename,
+		boost::shared_ptr<pcl::PointCloud<PointT>> & point_cloud_ptr
 	);
-	static void save_point_cloud_vector(
-		QString filename_pattern,
-		PcdPtrVector* point_cloud_vector
-	);
-	static void load_one_point_cloud(
-		QString filename,
-		PcdPtr point_cloud_ptr
-	);
-	static void scale_one_point_cloud(
-		PcdPtr point_cloud_ptr
+
+	template< typename PointT >
+	void scale_one_point_cloud(
+		boost::shared_ptr<pcl::PointCloud<PointT>> & point_cloud_ptr
 	);
 };
 

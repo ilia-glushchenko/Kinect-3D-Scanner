@@ -18,11 +18,15 @@ class CalibrationInterface : public ScannerBase
 	Q_OBJECT
 
 public:
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+	typedef std::vector<float> CalibMap;
+
 	CalibrationInterface(QObject *parent, QSettings* parent_settings);
 
 	void calibrate();
-	void calibrate(PcdPtrVector input_pcd_vector);
-	void undistort(Frames& frames);
+	void calibrate(PcdPtrVector & input_pcd_vector);
+	void undistort(Frames & frames);
 
 	void saveCalibrationData();
 	void loadCalibrationData();
@@ -33,7 +37,7 @@ private:
 	PcdPtrVector calib_plane_vector;
 	std::vector<std::vector<int>> matches_vector;
 
-	std::vector<Eigen::Vector3f>  x_vector;
+	std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>  x_vector;
 	std::vector<CalibMap> calib_map_vector;
 
 	void prepare();

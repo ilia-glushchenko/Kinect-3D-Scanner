@@ -1,213 +1,129 @@
 #include "core/registration/icpregistration.h"
 
-ICPRegistration::ICPRegistration(
-	QObject *parent, QSettings* parent_settings
-	) : ScannerBase(parent, parent_settings)
-{
+#include <pcl/registration/icp_nl.h>
+#include <pcl/registration/gicp.h>
+#include <pcl/common/transforms.h>
+#include <gicp/gicp.h>
+#include <QDebug>
 
+#include "core/registration/pclgicp.hpp"
+
+
+ICPRegistration::ICPRegistration(QObject *parent, QSettings* parent_settings) : 
+	ScannerBase(parent, parent_settings),
+	initial_transformation(Eigen::Matrix4f::Identity()),
+	result_t(Eigen::Matrix4f::Identity()),
+	fitness_score(0)
+{
 }
 
-void ICPRegistration::calculateICPTransformation(
-	KeypointsFrames& keypointsFrames,
-	Eigen::Matrix4f& intial_transformation_matrix,
-	int middle_index
+
+void ICPRegistration::setInput(
+		const KeypointsFrame & keypoints_frame_, 
+		const Eigen::Matrix4f & initial_transformation_
 	)
 {
-	if (keypointsFrames.empty())
-		return;
-
-	prepare();
-	if (middle_index != -1)
-		calculate_middle_based_all_keypoint_pair_icp(keypointsFrames, intial_transformation_matrix, middle_index);	
-	else
-		calculate_all_keypoint_pair_icp(keypointsFrames, intial_transformation_matrix);
+	keypoints_frame = keypoints_frame_;
+	initial_transformation = initial_transformation_;
 }
 
-void ICPRegistration::applyTransfomation(
-	Frames& frames
-	)
+
+Eigen::Matrix4f ICPRegistration::align()
 {
-	if (frames.empty())
-		return;
-
-	apply_icp_vector(frames);
+	result_t = initial_transformation;
+	calculate();
+	return result_t;
 }
 
-void ICPRegistration::getTransformation(
-	Matrix4fVector& icp_translation_matrix_vector
-	)
+
+Eigen::Matrix4f ICPRegistration::getTransformation() const
 {
-	if (_icp_translation_matrix_vector.empty())
-		return;
-
-	for (size_t i = 0; i < _icp_translation_matrix_vector.size(); i++)
-		icp_translation_matrix_vector.push_back(_icp_translation_matrix_vector[i]);
+	return result_t;
 }
+
+
+float ICPRegistration::getFitnessScore() const
+{
+	return fitness_score;
+}
+
 
 //----------------------------------------------------
 
-void ICPRegistration::prepare()
-{
-	_icp_translation_matrix_vector.clear();
-}
 
-void ICPRegistration::calculate_one_keypoint_pair_icp(
-	KeypointsFrame& keypointsFrame,
-	Eigen::Matrix4f& transformation_matrix
-	)
+void ICPRegistration::calculate()
 {
-	PcdPtr input_point_cloud_ptr  = keypointsFrame.keypointsPcdPair.second;
-	PcdPtr target_point_cloud_ptr = keypointsFrame.keypointsPcdPair.first;
-	pcl::Correspondences correspondeces = keypointsFrame.keypointsPcdCorrespondences;
+	PcdPtr & input_point_cloud_ptr = keypoints_frame.keypointsPcdPair.second;
+	PcdPtr & target_point_cloud_ptr = keypoints_frame.keypointsPcdPair.first;
+	pcl::Correspondences & correspondeces = keypoints_frame.keypointsPcdCorrespondences;
 
-	if (settings->value("ICP_SETTINGS/POINT_TO_PLANE").toBool())
+	const int & maxIter = settings->value("ICP_SETTINGS/MAX_ITERATIONS").toInt();
+	const double & trans_epsilon = settings->value("ICP_SETTINGS/TRANSFORMATION_EPSILON").toDouble();
+	const double & euclid_epsilon = settings->value("ICP_SETTINGS/EUCLIDEAN_EPSILON").toDouble();
+
+	const int & k_size = input_point_cloud_ptr->size();
+
+	if (settings->value("ICP_SETTINGS/POINT_TO_PLANE").toBool() && k_size > 20)
 	{
-		/*
-		pcl::registration::TransformationEstimationPointToPlaneLLS<PointType, PointType> icp;
+		pcl::GeneralizedIterativeClosestPoint<PointType, PointType> gicp;
+		gicp.setInputSource(input_point_cloud_ptr);
+		gicp.setInputTarget(target_point_cloud_ptr);
+		gicp.setMaximumIterations(maxIter);
+		gicp.setTransformationEpsilon(trans_epsilon);
+		gicp.setEuclideanFitnessEpsilon(euclid_epsilon);
+		gicp.align(Pcd());
 
-		Eigen::Matrix4f final_transformation_maxtrix;
-		icp.estimateRigidTransformation(
-			*input_point_cloud_ptr.get(),
-			*target_point_cloud_ptr.get(),
-			correspondeces,
-			final_transformation_maxtrix
-		);
+		if (gicp.hasConverged())
+		{
+			//ICP aligment
+			pcl::transformPointCloud(*target_point_cloud_ptr, *target_point_cloud_ptr, initial_transformation);
+			result_t = gicp.getFinalTransformation() * initial_transformation;
+			pcl::transformPointCloud(*input_point_cloud_ptr, *input_point_cloud_ptr, result_t);
+			fitness_score = gicp.getFitnessScore();
+		}
+		else
+		{
+			qDebug() << "PCL GICP has not converge.";
+		}
+	}
+	else if (settings->value("ICP_SETTINGS/GICP").toBool() && k_size > 20)
+	{
+		PCLGeneralizedICP pclgicp;
+		pclgicp.setInputCloud(input_point_cloud_ptr);
+		pclgicp.setTargetCloud(target_point_cloud_ptr);
+		pclgicp.align();
 
-		//Transformation
-		pcl::transformPointCloud(
-			*target_point_cloud_ptr.get(),
-			*target_point_cloud_ptr.get(),
-			transformation_matrix
-		);
-
-		transformation_matrix = final_transformation_maxtrix * transformation_matrix;
-
-		pcl::transformPointCloud(
-			*input_point_cloud_ptr.get(),
-			*input_point_cloud_ptr.get(),
-			transformation_matrix
-		);
-
-		if (settings->value("ICP_SETTINGS/ENABLE_LOG").toBool())
-			qDebug() << "Point To Plane ICP converged.";
-		*/
+		if (pclgicp.hasConverged())
+		{
+			pcl::transformPointCloud(*target_point_cloud_ptr, *target_point_cloud_ptr, initial_transformation);
+			result_t = pclgicp.getFinalTransformation() * initial_transformation;
+			pcl::transformPointCloud(*input_point_cloud_ptr, *input_point_cloud_ptr, result_t);
+			fitness_score =  pclgicp.getFitnessScore();
+		}
 	}
 	else
 	{
-		int maxIter
-			= settings->value("ICP_SETTINGS/MAX_ITERATIONS").toInt();
-		double trans_epsilon
-			= settings->value("ICP_SETTINGS/TRANSFORMATION_EPSILON").toDouble();
-		double euclid_epsilon
-			= settings->value("ICP_SETTINGS/EUCLIDEAN_EPSILON").toDouble();
-
 		pcl::IterativeClosestPointNonLinear<PointType, PointType> icp;
 		icp.setInputSource(input_point_cloud_ptr);
 		icp.setInputTarget(target_point_cloud_ptr);
 		icp.setMaximumIterations(maxIter);
 		icp.setTransformationEpsilon(trans_epsilon);
 		icp.setEuclideanFitnessEpsilon(euclid_epsilon);
-		PcdPtr output_cloud_ptr(new Pcd);
-		icp.align(*output_cloud_ptr.get());
+		icp.align(Pcd());
 
 		if (icp.hasConverged())
 		{
 			//ICP aligment
-			pcl::transformPointCloud(
-				*target_point_cloud_ptr.get(),
-				*target_point_cloud_ptr.get(),
-				transformation_matrix
-				);
-
-			Eigen::Matrix4f final_transformation_maxtrix = icp.getFinalTransformation();
-			transformation_matrix = final_transformation_maxtrix * transformation_matrix;
-
-			pcl::transformPointCloud(
-				*input_point_cloud_ptr.get(),
-				*input_point_cloud_ptr.get(),
-				transformation_matrix
-				);
-
-			if (settings->value("ICP_SETTINGS/ENABLE_LOG").toBool())
-			{
-				qDebug() << "ICP converged.";
-				qDebug() << "The score is " << icp.getFitnessScore();
-			}
+			pcl::transformPointCloud(*target_point_cloud_ptr, *target_point_cloud_ptr, initial_transformation);
+			result_t = icp.getFinalTransformation() * initial_transformation;
+			pcl::transformPointCloud(*input_point_cloud_ptr, *input_point_cloud_ptr, result_t);
+			fitness_score = icp.getFitnessScore();
 		}
 		else
 		{
-			if (settings->value("ICP_SETTINGS/ENABLE_LOG").toBool())
-				qDebug() << "ICP did not converge.";
+			qDebug() << "ICP did not converge.";
 		}
 	}
 
 }
 
-void ICPRegistration::calculate_all_keypoint_pair_icp(
-	KeypointsFrames& keypointsFrames,
-	Eigen::Matrix4f& intial_transformation_matrix
-	)
-{
-	qDebug() << "Calculating ICP registrations...";
-
-	Eigen::Matrix4f transformation_matrix = intial_transformation_matrix;
-	_icp_translation_matrix_vector.push_back(transformation_matrix);
-
-	for (int i = 0; i < keypointsFrames.size(); i++)
-	{
-		qDebug() << QString("ICP registrations %1 / %2").arg(i + 1).arg(keypointsFrames.size()).toStdString().c_str();
-		calculate_one_keypoint_pair_icp(
-			keypointsFrames[i],
-			transformation_matrix
-		);
-
-		if (settings->value("ICP_SETTINGS/ENABLE_LOG").toBool())
-			std::cout << std::endl << transformation_matrix << std::endl;
-
-		_icp_translation_matrix_vector.push_back(transformation_matrix);
-	}
-	qDebug() << "Done!";
-}
-
-void ICPRegistration::calculate_middle_based_all_keypoint_pair_icp(
-	KeypointsFrames& keypointsFrames,
-	Eigen::Matrix4f& intial_transformation_matrix,
-	int middle_index
-	)
-{
-	Eigen::Matrix4f transformation_matrix = intial_transformation_matrix;
-	for (size_t i = 0; i < keypointsFrames.size(); i++)
-	{
-		qDebug() << QString("ICP registrations %1 / %2").arg(i + 1).arg(keypointsFrames.size()).toStdString().c_str();
-		calculate_one_keypoint_pair_icp(
-			keypointsFrames[i],
-			transformation_matrix
-		);
-
-		if (settings->value("ICP_SETTINGS/ENABLE_LOG").toBool())
-			std::cout << std::endl << transformation_matrix << std::endl;
-
-		_icp_translation_matrix_vector.push_back(transformation_matrix);
-		transformation_matrix = intial_transformation_matrix;
-	}
-}
-
-void ICPRegistration::apply_icp_vector(
-	Frames& frames
-	)
-{
-	if (_icp_translation_matrix_vector.size() != frames.size())
-		return;
-
-	if (_icp_translation_matrix_vector.empty() || frames.empty())
-		return;
-
-	for (int i = 0; i < frames.size(); i++)
-	{
-		pcl::transformPointCloud(
-			*frames[i].pointCloudPtr.get(),
-			*frames[i].pointCloudPtr.get(),
-			_icp_translation_matrix_vector[i]
-		);
-	}
-}

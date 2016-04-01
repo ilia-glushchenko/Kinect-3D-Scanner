@@ -15,13 +15,13 @@ class KeypointsRejection : public ScannerBase
 
 public:
 	KeypointsRejection(QObject *parent, QSettings* parent_settings);
-	void rejection(
-		KeypointsFrames& in_keypointsFrames,
-		KeypointsFrames& out_keypointsFrames
+	
+	KeypointsFrames rejection(
+		KeypointsFrames & in_keypointsFrames
 	);
-	void rejection(
-		KeypointsFrame& in_keypointsFrame,
-		KeypointsFrame& out_keypointsFrame
+	
+	KeypointsFrame rejection(
+		KeypointsFrame & in_keypointsFrame
 	);
 
 private:
@@ -45,35 +45,35 @@ private:
 	);
 
 	void calculate_sac(
-		PcdPtr input_point_cloud_ptr,
-		PcdPtr target_point_cloud_ptr,
-		pcl::Correspondences& ñorrespondences,
-		double inlier_threshold,
-		int max_iter,
-		pcl::Correspondences& inliers,
-		Eigen::Matrix4f& out_transformation_matrix
+		const PcdPtr & input_point_cloud_ptr, 
+		const PcdPtr & target_point_cloud_ptr,
+		const pcl::Correspondences & correspondences, 
+		const double & inlier_threshold, 
+		const int & max_iter,
+		pcl::Correspondences & out_inliers, 
+		Eigen::Matrix4f & out_transformation_matrix
 	);
 
 	void update_clouds(
-		PcdPtr in_input_point_cloud_ptr1,
-		PcdPtr in_traget_point_cloud_ptr2,
-		pcl::Correspondences in_correspondences,
-		PcdPtr out_input_point_cloud_ptr1,
-		PcdPtr out_traget_point_cloud_ptr2,
-		pcl::Correspondences& out_correspondences
+		const PcdPtr & in_input_point_cloud_ptr1,
+		const PcdPtr & in_traget_point_cloud_ptr2,
+		const pcl::Correspondences & in_correspondences,
+		PcdPtr & out_input_point_cloud_ptr1,
+		PcdPtr & out_traget_point_cloud_ptr2,
+		pcl::Correspondences & out_correspondences
 	);
 
 	void add_camera_pose_points(
-		PcdPtr input_point_cloud_ptr,
-		PcdPtr target_point_cloud_ptr,
-		pcl::Correspondences& correspondences,
-		Eigen::Matrix4f& input_transformation_matrix,
-		Eigen::Matrix4f& target_transformation_matrix
+		PcdPtr & input_point_cloud_ptr,
+		PcdPtr & target_point_cloud_ptr,
+		pcl::Correspondences & correspondences,
+		const Eigen::Matrix4f & input_transformation_matrix,
+		const Eigen::Matrix4f & target_transformation_matrix
 	);
 
 	void copyKeypointsFrame(
-		KeypointsFrame& in_frame,
-		KeypointsFrame& out_frame
+		const KeypointsFrame & in_frame,
+		KeypointsFrame & out_frame
 	);
 };
 

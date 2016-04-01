@@ -19,7 +19,7 @@ void CalibrationInterface::calibrate()
 	calibrate_all_pcd();
 }
 
-void CalibrationInterface::calibrate(PcdPtrVector input_pcd_vector)
+void CalibrationInterface::calibrate(PcdPtrVector & input_pcd_vector)
 {
 	prepare();
 	initialize(input_pcd_vector);
@@ -40,9 +40,9 @@ void CalibrationInterface::initialize()
 		//Remove NaN's
 		PcdPtr tmp(new Pcd);
 		std::vector<int> matches;
-		raw_pcd_data_vector[i].get()->is_dense = false;
-		pcl::removeNaNFromPointCloud(*raw_pcd_data_vector[i].get(), *tmp.get(), matches);
-		pcl::copyPointCloud(*tmp.get(), *raw_pcd_data_vector[i].get());
+		raw_pcd_data_vector[i]->is_dense = false;
+		pcl::removeNaNFromPointCloud(*raw_pcd_data_vector[i], *tmp, matches);
+		pcl::copyPointCloud(*tmp, *raw_pcd_data_vector[i]);
 		matches_vector.push_back(matches);
 
 		//Fill empty x_vector
@@ -50,7 +50,7 @@ void CalibrationInterface::initialize()
 
 		//Fill calib plane vector
 		PcdPtr calib_plane(new Pcd);
-		pcl::copyPointCloud(*raw_pcd_data_vector[i].get(), *calib_plane.get());
+		pcl::copyPointCloud(*raw_pcd_data_vector[i], *calib_plane);
 		calib_plane_vector.push_back(calib_plane);
 
 		//Fill calib map vector
@@ -324,12 +324,13 @@ void CalibrationInterface::loadCalibrationData()
 									 settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
 									 settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i);
 
-		PclIO::load_one_point_cloud(
+		pclio::load_one_point_cloud(
 			(QFileInfo(settings->fileName()).absolutePath() + "/" +
 			settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
 			settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i)),
 			point_cloud_ptr
 		);
+		pclio::scale_one_point_cloud(point_cloud_ptr);
 
 		if (point_cloud_ptr.get()->points.empty())
 			continue;

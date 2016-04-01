@@ -110,7 +110,7 @@ void OpenNiInterface::save_long_image_data()
 			QFileInfo(settings->fileName()).absolutePath() + "/" +
 			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 			settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();
-		PclIO::save_one_point_cloud(pcd_filename_pattern.arg(i), point_cloud_ptr);
+		pclio::save_one_point_cloud(pcd_filename_pattern.arg(i), point_cloud_ptr);
 	}
 
 	qDebug() << "Done!";
@@ -299,6 +299,8 @@ void OpenNiInterface::stream()
 	Mat depthFrameMat;
 	Mat colorFrameMat;
 
+	uint frame_index = 0;
+
 	while (true)
 	{
 		colorStream.readFrame(&colorFrame);
@@ -353,11 +355,13 @@ void OpenNiInterface::stream()
 
 		if (record_to_pcd_data)
 		{
+			++frame_index;
+
 			QString pcd_image_filename_pattern =
 				QFileInfo(settings->fileName()).absolutePath() + "/" +
 						  settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 						  settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
-			imwrite(pcd_image_filename_pattern.arg(depthFrame.getFrameIndex()).toStdString(), colorFrameMat);
+			imwrite(pcd_image_filename_pattern.arg(frame_index).toStdString(), colorFrameMat);
 
 			vector<cv::Vec3f> worldCoords;
 			depthpixels_to_world_coordinate(src_depth_pixels, &worldCoords);
@@ -372,7 +376,7 @@ void OpenNiInterface::stream()
 				QFileInfo(settings->fileName()).absolutePath() + "/" +
 						  settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
 						  settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();			
-			PclIO::save_one_point_cloud(pcd_filename_pattern.arg(depthFrame.getFrameIndex()), point_cloud_ptr);
+			pclio::save_one_point_cloud(pcd_filename_pattern.arg(frame_index), point_cloud_ptr);
 
 			worldCoordsVector.pop_back();
 			colorImagesMatVector.pop_back();
@@ -629,7 +633,6 @@ void OpenNiInterface::show_depth_map(DepthMap depthMap, QString title)
 	}
 
 	Mat depthFrameMat;
-
 	depthFrameMat.create(Size(WIDTH, HEIGHT), CV_8UC3);
 
 	int x, y, i;
@@ -767,6 +770,7 @@ void OpenNiInterface::depthpixels_to_world_coordinate(
 	)
 {
 	for (int y = 0; y < HEIGHT; y++)
+	{
 		for (int x = 0; x < WIDTH; x++)
 		{
 			int index = x + y * WIDTH;
@@ -782,6 +786,7 @@ void OpenNiInterface::depthpixels_to_world_coordinate(
 
 			worldCoords->push_back(world_coord);
 		}
+	}
 }
 
 void OpenNiInterface::depthpixels_to_depthmap(
@@ -790,11 +795,13 @@ void OpenNiInterface::depthpixels_to_depthmap(
 	)
 {
 	for (int y = 0; y < HEIGHT; y++)
+	{
 		for (int x = 0; x < WIDTH; x++)
 		{
 			int i = x + y * WIDTH;
 			depthMap->push_back(depthpixels[i]);
 		}
+	}
 }
 
 void OpenNiInterface::depthpixels_to_cv_mat(
@@ -822,6 +829,7 @@ void OpenNiInterface::depthpixels_to_cv_mat(
 
 	int i;
 	for (int y = 0; y < HEIGHT; y++)
+	{
 		for (int x = 0; x < WIDTH; x++)
 		{
 			i = x + y * WIDTH;
@@ -900,6 +908,7 @@ void OpenNiInterface::depthpixels_to_cv_mat(
 			depthFrameMat->at<Vec3b>(y, x)[1] = g;
 			depthFrameMat->at<Vec3b>(y, x)[2] = r;
 		}
+	}
 }
 
 void OpenNiInterface::depth_map_to_point_cloud(
@@ -912,15 +921,17 @@ void OpenNiInterface::depth_map_to_point_cloud(
 	point_cloud->resize(WIDTH * HEIGHT);
 
 	for (int y = 0; y < HEIGHT; y++)
+	{
 		for (int x = 0; x < WIDTH; x++)
 		{
 			int index = x + y * WIDTH;
 
 			double z_val = worldCoordsVector[image_index][index][2];
-			if (z_val == 0)
+			if (z_val == 0) {
 				point_cloud->at(x, y).z = NAN;
-			else
+			} else {
 				point_cloud->at(x, y).z = z_val;
+			}
 
 			point_cloud->at(x, y).x = worldCoordsVector[image_index][index][0];
 			point_cloud->at(x, y).y = worldCoordsVector[image_index][index][1];
@@ -929,6 +940,7 @@ void OpenNiInterface::depth_map_to_point_cloud(
 			point_cloud->at(x, y).g = colorImagesMatVector[image_index].at<cv::Vec3b>(y, x)[1];
 			point_cloud->at(x, y).b = colorImagesMatVector[image_index].at<cv::Vec3b>(y, x)[0];
 		}
+	}
 }
 
 

@@ -70,3 +70,4 @@ MyProject/
 default_project/
 GeneratedFiles/
 New folder/project.ini
+*.tfm
