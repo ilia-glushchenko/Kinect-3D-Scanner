@@ -66,9 +66,7 @@ void ReconstructionInterface::perform_tsdf_integration(
 	std::transform(frames.begin(), frames.end(), std::back_inserter(point_cloud_vector),
 		[](const Frame & frame){ return frame.pointCloudPtr; });
 
-	volumeReconstruction->addPointCloudVector(
-		point_cloud_vector, final_translation_matrix_vector
-		);
+	volumeReconstruction->addPointCloudVector(point_cloud_vector, final_translation_matrix_vector);
 }
 
 
@@ -216,74 +214,6 @@ void ReconstructionInterface::slot_perform_reconstruction()
 
 void ReconstructionInterface::slot_change_pair(int index)
 {
-	/*
-	if (point_cloud_vector.empty() ||
-		correspondences_vector.empty() ||
-		keypoint_point_cloud_vector.empty())
-	{
-		return;
-	}
-
-	pcdVizualizer->redraw();
-
-	pcdVizualizer->viewer.get()->addText(
-		QString("CLOUD #%1 & #%2").arg(index - 1).arg(index).toStdString(),
-		settings->value("VISUALIZATION/CLOUD_TEXT_X").toInt(),
-		settings->value("VISUALIZATION/CLOUD_TEXT_Y").toInt(),
-		settings->value("VISUALIZATION/CLOUD_TEXT_FONT_SIZE").toInt(),
-		0, 0, 0,
-		"clouds_text"
-		);
-
-	if (settings->value("FINAL_SETTINGS/DRAW_ALL_CLOUDS").toBool())
-	{
-		//Main clouds
-		pcl::visualization::PointCloudColorHandlerRGBField<PointType> rgb1(point_cloud_vector[index]);
-		pcdVizualizer->viewer.get()->addPointCloud<PointType>(point_cloud_vector[index], rgb1, QString("Cloud #%1").arg(index).toStdString());
-		pcl::visualization::PointCloudColorHandlerRGBField<PointType> rgb2(point_cloud_vector[index - 1]);
-		pcdVizualizer->viewer.get()->addPointCloud<PointType>(point_cloud_vector[index - 1], rgb2, QString("Cloud #%1").arg(index - 1).toStdString());
-	}
-
-	if (settings->value("FINAL_SETTINGS/DRAW_ALL_KEYPOINT_CLOUDS").toBool())
-	{
-		index = index - 1;
-		//Correspondences
-		pcdVizualizer->viewer.get()->addCorrespondences<PointType>(
-			keypoint_point_cloud_vector[index].first,
-			keypoint_point_cloud_vector[index].second,
-			correspondences_vector[index],
-			QString("Cor %1").arg(index).toStdString()
-			);
-
-		//First keypoint point cloud 
-		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZRGB> single_color(
-			keypoint_point_cloud_vector[index].first,
-			255, 0, 0
-			);
-		pcdVizualizer->viewer.get()->addPointCloud<PointType>(
-			keypoint_point_cloud_vector[index].first, single_color,
-			QString("Cloud P1 %1").arg(index).toStdString()
-			);
-		pcdVizualizer->viewer.get()->setPointCloudRenderingProperties(
-			pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 6,
-			QString("Cloud P1 %1").arg(index).toStdString()
-			);
-
-		//Second keypoint point cloud 
-		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZRGB> single_color1(
-			keypoint_point_cloud_vector[index].second,
-			0, 0, 255
-			);
-		pcdVizualizer->viewer.get()->addPointCloud<PointType>(
-			keypoint_point_cloud_vector[index].second, single_color1,
-			QString("Cloud P2 %1").arg(index).toStdString()
-			);
-		pcdVizualizer->viewer.get()->setPointCloudRenderingProperties(
-			pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 6,
-			QString("Cloud P2 %1").arg(index).toStdString()
-			);
-	}
-	*/
 }
 
 void ReconstructionInterface::slot_set_use_reconstruction(int value)

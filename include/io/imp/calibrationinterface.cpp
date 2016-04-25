@@ -38,26 +38,19 @@ void CalibrationInterface::initialize()
 	for (int i = 0; i < raw_pcd_data_vector.size(); i++)
 	{
 		//Remove NaN's
-		PcdPtr tmp(new Pcd);
 		std::vector<int> matches;
 		raw_pcd_data_vector[i]->is_dense = false;
-		pcl::removeNaNFromPointCloud(*raw_pcd_data_vector[i], *tmp, matches);
-		pcl::copyPointCloud(*tmp, *raw_pcd_data_vector[i]);
+		pcl::removeNaNFromPointCloud(*raw_pcd_data_vector[i], *raw_pcd_data_vector[i], matches);
 		matches_vector.push_back(matches);
 
 		//Fill empty x_vector
 		x_vector.push_back(Eigen::VectorXf(3));
 
 		//Fill calib plane vector
-		PcdPtr calib_plane(new Pcd);
-		pcl::copyPointCloud(*raw_pcd_data_vector[i], *calib_plane);
-		calib_plane_vector.push_back(calib_plane);
+		calib_plane_vector.push_back(PcdPtr(new Pcd(*raw_pcd_data_vector[i])));
 
 		//Fill calib map vector
-		CalibMap calib_map(WIDTH*HEIGHT);
-		for (int i = 0; i < calib_map.size(); i++)
-			calib_map[i] = 0;
-		calib_map_vector.push_back(calib_map);
+		calib_map_vector.push_back(CalibMap(WIDTH*HEIGHT, 0));
 	}
 }
 
@@ -66,36 +59,33 @@ void CalibrationInterface::initialize(PcdPtrVector input_pcd_vector)
 	for (int i = 0; i < input_pcd_vector.size(); i++)
 	{
 		//Copy PCD data
-		PcdPtr point_cloud_ptr(new Pcd);
-		pcl::copyPointCloud(*input_pcd_vector[i].get(), *point_cloud_ptr.get());
-		raw_pcd_data_vector.push_back(point_cloud_ptr);
+		raw_pcd_data_vector.push_back(PcdPtr(new Pcd(*input_pcd_vector[i])));
 
 		//Remove NaN's
 		std::vector<int> matches;
-		pcl::removeNaNFromPointCloud(*point_cloud_ptr.get(), *point_cloud_ptr.get(), matches);
+		pcl::removeNaNFromPointCloud(*raw_pcd_data_vector[i], *raw_pcd_data_vector[i], matches);
 		matches_vector.push_back(matches);
 
 		//Fill empty x_vector
 		x_vector.push_back(Eigen::VectorXf(3));
 
 		//Fill calib plane vector
-		PcdPtr calib_plane(new Pcd);
-		pcl::copyPointCloud(*raw_pcd_data_vector[i].get(), *calib_plane.get());
-		calib_plane_vector.push_back(calib_plane);
+		calib_plane_vector.push_back(PcdPtr(new Pcd(*raw_pcd_data_vector[i])));
 
 		//Fill calib map vector
-		CalibMap calib_map(WIDTH*HEIGHT);
-		for (int i = 0; i < calib_map.size(); i++)
-			calib_map[i] = 0;
-		calib_map_vector.push_back(calib_map);
+		calib_map_vector.push_back(CalibMap(WIDTH*HEIGHT, 0));
 	}
 }
 
 void CalibrationInterface::calibrate_all_pcd()
 {
 	qDebug() << "Calibration...";
-	for (int i = 0; i < raw_pcd_data_vector.size(); i++)
+	
+	for (uint i = 0; i < raw_pcd_data_vector.size(); ++i)
+	{
 		calibrate_one_pcd(i);
+	}
+		
 	qDebug() << "Done!";
 }
 
@@ -116,11 +106,11 @@ void CalibrationInterface::calculate_least_squares(int index)
 	float x21 = 0.0f, x22 = 0.0f, x23 = 0.0f;
 	float x31 = 0.0f, x32 = 0.0f, x33 = 0.0f;
 
-	for (int i = 0; i < raw_pcd_data_vector[index].get()->points.size(); i++)
+	for (uint i = 0; i < (*raw_pcd_data_vector[index]).size(); ++i)
 	{
-		float x = raw_pcd_data_vector[index].get()->points[i].x;
-		float y = raw_pcd_data_vector[index].get()->points[i].y;
-		float z = raw_pcd_data_vector[index].get()->points[i].z;
+		const float x = (*raw_pcd_data_vector[index])[i].x;
+		const float y = (*raw_pcd_data_vector[index])[i].y;
+		const float z = raw_pcd_data_vector[index].get()->points[i].z;
 		x11 += x * x;
 		x12 += x * y;
 		x13 += x;
@@ -145,26 +135,26 @@ void CalibrationInterface::calculate_least_squares(int index)
 
 void CalibrationInterface::calculate_calibration_plane(int index)
 {
-	float A = x_vector[index][0];
-	float B = x_vector[index][1];
-	float C = x_vector[index][2];
+	const float A = x_vector[index][0];
+	const float B = x_vector[index][1];
+	const float C = x_vector[index][2];
 
-	float D = raw_pcd_data_vector[index].get()->points[0].z;
-	for (int i = 1; i < raw_pcd_data_vector[index].get()->points.size(); i++)
+	float D = (*raw_pcd_data_vector[index])[0].z;
+	for (uint i = 1; i < (*raw_pcd_data_vector[index]).size(); ++i)
 	{
-		D += raw_pcd_data_vector[index].get()->points[i].z;
+		D += (*raw_pcd_data_vector[index])[i].z;
 		D /= 2;
 	}
 
 	for (int i = 0; i < raw_pcd_data_vector[index].get()->points.size(); i++)
 	{
-		float x = raw_pcd_data_vector[index].get()->points[i].x;
-		float y = raw_pcd_data_vector[index].get()->points[i].y;
-		float z = (-(A*x) / C) + (-(B*y) / C) + C;
+		const float x = (*raw_pcd_data_vector[index])[i].x;
+		const float y = (*raw_pcd_data_vector[index])[i].y;
+		const float z = (-(A*x) / C) + (-(B*y) / C) + C;
 
-		calib_plane_vector[index].get()->points[i].x = x;
-		calib_plane_vector[index].get()->points[i].y = y;
-		calib_plane_vector[index].get()->points[i].z = z;
+		(*calib_plane_vector[index])[i].x = x;
+		(*calib_plane_vector[index])[i].y = y;
+		(*calib_plane_vector[index])[i].z = z;
 	}
 }
 
@@ -172,9 +162,9 @@ void CalibrationInterface::calculate_calibration_map(int index)
 {
 	for (int i = 0; i < matches_vector[index].size(); i++)
 	{
-		float raw_z   = raw_pcd_data_vector[index].get()->points[i].z;
-		float plane_z = calib_plane_vector[index].get()->points[i].z;
-		float shift   = raw_z - plane_z;
+		const float raw_z   = (*raw_pcd_data_vector[index])[i].z;
+		const float plane_z = (*calib_plane_vector[index])[i].z;
+		const float shift   = raw_z - plane_z;
 		calib_map_vector[index][matches_vector[index][i]] = shift;
 	}
 }
@@ -184,9 +174,11 @@ void CalibrationInterface::calculate_calibration_map(int index)
 
 void CalibrationInterface::undistort(Frames& frames)
 {
-	for (int i = 0; i < frames.size(); i++)
+	for (uint i = 0; i < frames.size(); ++i)
+	{
 		udistort_pcd_vector.push_back(frames[i].pointCloudPtr);
-
+	}
+		
 	undistort_all_pcd();
 }
 
@@ -196,26 +188,30 @@ void CalibrationInterface::undistort_all_pcd()
 	for (int i = 0; i < matches_vector.size(); i++)
 	{
 		PcdPtr tmp_pdc_ptr(new Pcd);
-		tmp_pdc_ptr.get()->width = WIDTH;
-		tmp_pdc_ptr.get()->height = HEIGHT;
-		tmp_pdc_ptr.get()->resize(HEIGHT*WIDTH);
+		tmp_pdc_ptr->width  = WIDTH;
+		tmp_pdc_ptr->height = HEIGHT;
+		tmp_pdc_ptr->resize(HEIGHT*WIDTH);
 
-		for (int y = 0; y < HEIGHT; y++)
-			for (int x = 0; x < WIDTH; x++)
+		for (uint y = 0; y < HEIGHT; ++y)
+		{
+			for (uint x = 0; x < WIDTH; ++x)
 			{
-				tmp_pdc_ptr.get()->at(x, y).x = 0;
-				tmp_pdc_ptr.get()->at(x, y).y = 0;
-				tmp_pdc_ptr.get()->at(x, y).z = NAN;
-				tmp_pdc_ptr.get()->at(x, y).r = 0;
-				tmp_pdc_ptr.get()->at(x, y).g = 0;
-				tmp_pdc_ptr.get()->at(x, y).b = 0;
+				tmp_pdc_ptr->at(x, y).x = 0;
+				tmp_pdc_ptr->at(x, y).y = 0;
+				tmp_pdc_ptr->at(x, y).z = NAN;
+				tmp_pdc_ptr->at(x, y).r = 0;
+				tmp_pdc_ptr->at(x, y).g = 0;
+				tmp_pdc_ptr->at(x, y).b = 0;
 			}
+		}
 
-		for (int j = 0; j < raw_pcd_data_vector[i].get()->size(); j++)
-			tmp_pdc_ptr.get()->points[matches_vector[i][j]] = raw_pcd_data_vector[i].get()->points[j];
+		for (uint j = 0; j < raw_pcd_data_vector[i]->size(); ++j)
+		{
+			tmp_pdc_ptr->points[ matches_vector[i][j] ] = raw_pcd_data_vector[i]->points[j];
+		}
 
-		*raw_pcd_data_vector[i].get() = *tmp_pdc_ptr.get();
-		raw_pcd_data_vector[i].get()->is_dense = false;
+		*raw_pcd_data_vector[i] = *tmp_pdc_ptr;
+		raw_pcd_data_vector[i]->is_dense = false;
 	}
 
 	//Undistort
@@ -230,70 +226,70 @@ void CalibrationInterface::undistort_all_pcd()
 
 void CalibrationInterface::undistort_one_pcd(int index)
 {
-	if (udistort_pcd_vector.empty())
+	if (udistort_pcd_vector.empty() || raw_pcd_data_vector.empty())
+	{
 		return;
-	if (raw_pcd_data_vector.empty())
-		return;
+	}
+
 
 	for (int y = 0; y < HEIGHT; y++)
+	{
 		for (int x = 0; x < WIDTH; x++)
-		{		
-			if (isnan<float>(udistort_pcd_vector[index].get()->at(x, y).z) == false)
+		{
+			if (!isnan<float>(udistort_pcd_vector[index]->at(x, y).z))
 			{
-				float z = udistort_pcd_vector[index].get()->at(x, y).z;
+				float z = udistort_pcd_vector[index]->at(x, y).z;
 
 				//Detecting sample radius
 				int begin_index = -1;
-				int end_index   = -1;
+				int end_index = -1;
 				for (int i = 0; i < raw_pcd_data_vector.size(); i++)
 				{
-					if (isnan<float>(raw_pcd_data_vector[i].get()->at(x, y).z))
+					if (isnan<float>(raw_pcd_data_vector[i]->at(x, y).z))
+					{
 						continue;
-					if (raw_pcd_data_vector[i].get()->at(x, y).z > z)
+					}
+						
+					if (raw_pcd_data_vector[i]->at(x, y).z > z)
 					{
 						end_index = i;
-						if (i > 0)
-							begin_index = i - 1;
+						if (i > 0) { begin_index = i - 1; }
 						break;
 					}
 				}
 
 				//Undistort
 				if (begin_index == -1 && end_index == -1)
-				{ 
-					float shift =
-						calib_map_vector[calib_map_vector.size() - 1][x + y * WIDTH];
+				{
+					const float shift = calib_map_vector[calib_map_vector.size() - 1][x + y * WIDTH];
 					udistort_pcd_vector[index].get()->at(x, y).z -= shift;
 				}
 				else if (begin_index == -1 && end_index != -1)
 				{
-					float shift = calib_map_vector[0][x + y * WIDTH];
+					const float shift = calib_map_vector[0][x + y * WIDTH];
 					udistort_pcd_vector[index].get()->at(x, y).z -= shift;
 				}
 				else
 				{
-					float shift_1 = calib_map_vector[begin_index][x + y * WIDTH];
-					float shift_2 = calib_map_vector[end_index][x + y * WIDTH];
-					float z_1 = raw_pcd_data_vector[begin_index].get()->at(x, y).z;
-					float z_2 = raw_pcd_data_vector[end_index].get()->at(x, y).z;
-					
-					//If Z fits in the radius
-					if (z >= z_1 && z < z_2)
+					const float shift_1 = calib_map_vector[begin_index][x + y * WIDTH];
+					const float shift_2 = calib_map_vector[end_index][x + y * WIDTH];
+					const float z_1 = raw_pcd_data_vector[begin_index].get()->at(x, y).z;
+					const float z_2 = raw_pcd_data_vector[end_index].get()->at(x, y).z;
+
+					if (z >= z_1 && z < z_2) //If Z fits in the radius
 					{
-						float n = ((z - z_1) / ((z_2 - z_1) / 100.0f)) / 100.0f;
-						float k = (shift_2 - shift_1) * n;
-						udistort_pcd_vector[index].get()->at(x, y).z -= shift_1 + k;
+						const float n = ((z - z_1) / ((z_2 - z_1) / 100.0f)) / 100.0f;
+						const float k = (shift_2 - shift_1) * n;
+						udistort_pcd_vector[index]->at(x, y).z -= shift_1 + k;
 					}
-					//If it does not
-					else
+					else //If it does not
 					{
 						udistort_pcd_vector[index].get()->at(x, y).z -= shift_1;
 					}
 				}
 			}
-
 		}
-
+	}
 }
 
 //####################################################################
@@ -315,15 +311,16 @@ void CalibrationInterface::loadCalibrationData()
 
 	raw_pcd_data_vector.clear();
 	int to = settings->value("CALIBRATION/NUMBER").toInt();
-	for (int i = 0; i < to; i++)
+	for (uint i = 0; i < to; ++i)
 	{
-		PcdPtr point_cloud_ptr(new Pcd);
-
 		if (log)
+		{
 			qDebug() << "Reading" << QFileInfo(settings->fileName()).absolutePath() + "/" +
-									 settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
-									 settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i);
+				settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
+				settings->value("CALIBRATION/POINT_CLOUD_NAME").toString().arg(i);
+		}
 
+		PcdPtr point_cloud_ptr(new Pcd);
 		pclio::load_one_point_cloud(
 			(QFileInfo(settings->fileName()).absolutePath() + "/" +
 			settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
@@ -333,12 +330,15 @@ void CalibrationInterface::loadCalibrationData()
 		pclio::scale_one_point_cloud(point_cloud_ptr);
 
 		if (point_cloud_ptr.get()->points.empty())
+		{
 			continue;
+		}
 
 		raw_pcd_data_vector.push_back(point_cloud_ptr);
 	}
 
-	if (log) {
+	if (log) 
+	{
 		qDebug() << "Done!";
 		qDebug() << "Total:" << raw_pcd_data_vector.size();
 	}

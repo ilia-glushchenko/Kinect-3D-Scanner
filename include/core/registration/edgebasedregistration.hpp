@@ -4,6 +4,8 @@
 #include <boost/iterator/counting_iterator.hpp>
 
 #include "core/registration/registrationalgorithm.hpp"
+#include "core/registration/edgebalancer.hpp"
+#include "core/registration/errormetric.hpp"
 #include "core/registration/sacregistration.h"
 #include "core/registration/icpregistration.h"
 #include "core/registration/linearregistration.hpp"
@@ -27,9 +29,9 @@ public:
 		
 		Loop(const uint & start_loop_frame_index, const uint & end_loop_frame_index)
 		{
-			if (end_loop_frame_index - start_loop_frame_index < 3)
+			if (end_loop_frame_index - start_loop_frame_index == 0)
 			{
-				throw std::invalid_argument("Loop loop_size < 2");
+				throw std::invalid_argument("Loop loop_size == 0");
 			}
 
 			edge_frames_indexes 
@@ -59,19 +61,43 @@ private:
 
 	void prepare_all_loops()
 	{
-		for (uint i = read_from + loop_size; i <= read_to; i += loop_size)
-		{
-			loops.push_back(Loop(i - loop_size, i));
-		}
-
 		Frames edge_frames;
 		Frames transformed_edge_frames;
 		
-		const uint edges_from = loops.front().edge_frames_indexes.first;
-		const uint edges_to = loops.back().edge_frames_indexes.second;
-		for (PcdInputIterator it(settings, edges_from, edges_to, loop_size); it != PcdInputIterator(); ++it)
+		if (!settings->value("FINAL_SETTINGS/LUM_BASED_RECONSTRUCTION_EDGE_BALANCING").toBool())
 		{
-			edge_frames.push_back(*it);
+			for (uint i = read_from + loop_size; i <= read_to; i += loop_size)
+			{
+				loops.push_back(Loop(i - loop_size, i));
+			}
+
+			const uint edges_from = loops.front().edge_frames_indexes.first;
+			const uint edges_to = loops.back().edge_frames_indexes.second;
+			for (PcdInputIterator it(settings, edges_from, edges_to, loop_size); it != PcdInputIterator(); ++it)
+			{
+				edge_frames.push_back(*it);
+			}
+		}
+		else
+		{
+			EdgeBalancer<CameraDistanceMetric, PcdInputIterator> eb(
+				PcdInputIterator(settings, read_from, read_to, read_step), PcdInputIterator(), loop_size, settings);
+			std::vector<uint> edge_indices = eb.balance();
+
+			for (uint i = 1; i < edge_indices.size(); ++i)
+			{
+				loops.push_back(Loop(edge_indices[i - 1] + read_from, edge_indices[i] + read_from));
+			}
+
+			PcdInputIterator it(settings, read_from, read_to, read_step);
+			for (uint index = 0, edge_index = 0; it != PcdInputIterator(); ++it, ++index)
+			{
+				if (edge_indices[edge_index] == index)
+				{
+					edge_frames.push_back(*it);
+					++edge_index;
+				}
+			}
 		}
 
 		if (loops.size() + 1 != edge_frames.size())

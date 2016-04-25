@@ -3,9 +3,9 @@
 ScannerWidget::ScannerWidget(QWidget *parent)
 	:QMainWindow(parent)
 {	
-	setWindowFlags(Qt::CustomizeWindowHint 
-				   | Qt::WindowCloseButtonHint 
-				   | Qt::WindowStaysOnTopHint);
+	setWindowFlags(	Qt::CustomizeWindowHint
+					| Qt::WindowCloseButtonHint);
+				   //| Qt::WindowStaysOnTopHint);
 	initializeOpenDialogInterface();
 }
 

@@ -42,15 +42,6 @@ public:
 		++(*this);
 	}
 
-	PcdInputIterator & operator=(const PcdInputIterator & it)
-	{
-		if (this != &it)
-		{
-			PcdInputIterator(it);
-		}
-		return *this;
-	}
-
 	bool operator==(const PcdInputIterator & it) const
 	{
 		if ((range.size() != it.range.size()) && (!range.empty() && !it.range.empty()))
@@ -69,44 +60,32 @@ public:
 		return !(*this == it);
 	}
 
-	reference operator*() const
+	Frame operator*() const
 	{
 		if (index == range.size())
 		{
 			throw std::range_error("PcdInputIterator::operator*()");
 		}
+
+		Frame frame;
+		const bool success = frame.load(cloud_filename_pattern.arg(range[index]), image_filename_pattern.arg(range[index]));
+		qDebug() << "Loading frame #" << range[index] << (success ? ": Success" : ": Error");
 
 		return frame;
-	}
-
-	pointer operator->() const
-	{
-		if (index == range.size())
-		{
-			throw std::range_error("PcdInputIterator::operator*()");
-		}
-
-		return &frame;
 	}
 
 	PcdInputIterator & operator++()
 	{
 		if (index < int(range.size()))
 		{
-			bool success = false;
-			while (!success && ++index < range.size())
-			{
-				success = frame.load(cloud_filename_pattern.arg(range[index]), image_filename_pattern.arg(range[index]));
-				qDebug() << "Loading frame #" << range[index] << (success ? ": Success" : ": Error");
-			}
-
+			++index;
 			return *this;
 		}
 
 		throw std::out_of_range("PcdInputIterator::operator++");
 	}
 
-	PcdInputIterator & operator++(int)
+	PcdInputIterator operator++(int)
 	{
 		PcdInputIterator tmp(*this);
 		++tmp;
@@ -117,23 +96,14 @@ public:
 	{
 		if (index > 0)
 		{
-			int new_index = index;
-			bool success = false;
-			
-			while (!success && new_index - 1 >= 0)
-			{
-				success = frame.load(cloud_filename_pattern.arg(range[new_index]), image_filename_pattern.arg(range[new_index]));
-				qDebug() << "Loading frame #" << range[new_index] << (success ? ": Success" : ": Error");
-			}
-			index = success ? new_index : index;
-
+			--index;
 			return *this;
 		}
 
 		throw std::out_of_range("PcdInputIterator::operator--");
 	}
 
-	PcdInputIterator & operator--(int)
+	PcdInputIterator operator--(int)
 	{
 		PcdInputIterator tmp(*this);
 		++tmp;
@@ -147,7 +117,6 @@ private:
 
 	std::vector<uint> range;
 	int index;
-	Frame frame;
 
 	uint from;
 	uint to;

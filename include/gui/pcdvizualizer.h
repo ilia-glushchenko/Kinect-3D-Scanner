@@ -44,6 +44,8 @@ public:
 		const char * value
 	) const;
 
+	void spin(const uint & spin_time = 1);
+
 private:
 	float gaussian_pdf(const float & x, const float & u, const float & sigma) const;
 

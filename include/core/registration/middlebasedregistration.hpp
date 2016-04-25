@@ -1,7 +1,11 @@
 #ifndef MIDDLE_BASED_REGISTRATION_HPP
 #define MIDDLE_BASED_REGISTRATION_HPP
 
+#include <boost/iterator/counting_iterator.hpp>
+
 #include "core/registration/registrationalgorithm.hpp"
+#include "core/registration/edgebalancer.hpp"
+#include "core/registration/errormetric.hpp"
 #include "core/registration/icpregistration.h"
 #include "core/registration/sacregistration.h"
 #include "core/registration/parallelregistration.hpp"
@@ -11,6 +15,7 @@
 class MiddleBasedRegistration : public RegistrationAlgorithm
 {
 public:
+	typedef PcdInputIterator Iter;
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 	struct Loop : RegistrationAlgorithm::Loop
@@ -19,25 +24,18 @@ public:
 		Frame middle_frame;
 		Eigen::Matrix4f middle_transformation;
 
-		Loop(const uint & middle_index_, const uint & packet_size): 
-			middle_index(middle_index_),
+		Loop(const uint & from_, const uint & to_, const uint & middle_): 
+			middle_index(middle_),
 			middle_transformation(Eigen::Matrix4f::Identity())
 		{
-			if (packet_size < 2)
+			if (to_ - from_ < 2)
 			{
 				throw std::invalid_argument("Loop packet_size < 2");
 			}
 
-			const uint from = middle_index - packet_size / 2;
-			const uint to = from + packet_size;
-
-			for (uint i = from; i < to; ++i)
-			{
-				if (i != middle_index)
-				{
-					inner_indexes.push_back(i);
-				}
-			}
+			inner_indexes = std::vector<uint>(
+				boost::counting_iterator<uint>(from_), boost::counting_iterator<uint>(to_)
+			);
 
 			inner_transformations.resize(inner_indexes.size(), Eigen::Matrix4f::Identity());
 		}
@@ -58,16 +56,54 @@ private:
 	
 	void prepare_all_loops()
 	{
-		for (uint i = read_from + loop_size / 2; i <= read_to - loop_size / 2; i += loop_size)
-		{
-			loops.push_back(Loop(i, loop_size));
-		}
+		const uint edges_from = read_from + loop_size / 2;
+		const uint edges_to = read_to - loop_size / 2;
 
-		Frames middle_frames, transformed_middle_frames;
-		PcdInputIterator it(settings, loops.front().middle_index, loops.back().middle_index, loop_size);
-		for (it; it != PcdInputIterator(); ++it)
+		Frames middle_frames;
+		Frames transformed_middle_frames;
+
+		if (!settings->value("FINAL_SETTINGS/MIDDLE_BASED_RECONSTRUCTION_EDGE_BALANCING").toBool())
 		{
-			middle_frames.push_back(*it);
+			for (uint i = read_from + loop_size; i <= read_to; i += loop_size)
+			{
+				loops.push_back(Loop(i - loop_size, i, i - loop_size / 2));
+			}
+
+			PcdInputIterator it(settings, loops.front().middle_index, loops.back().middle_index, loop_size);
+			for (it; it != PcdInputIterator(); ++it)
+			{
+				middle_frames.push_back(*it);
+			}
+		}
+		else
+		{
+			EdgeBalancer<CameraDistanceMetric, PcdInputIterator> eb(
+				Iter(settings, edges_from, edges_to, read_step), Iter(), loop_size, settings);
+			std::vector<uint> edge_indices = eb.balance();
+
+			Iter it(settings, edges_from, edges_to, read_step);
+			for (uint edge_index = 0; it != Iter(); ++it, ++edge_index)
+			{
+				if (std::find(edge_indices.begin(), edge_indices.end(), edge_index) != edge_indices.end())
+				{
+					middle_frames.push_back(*it);
+				}
+			}
+
+			std::for_each(edge_indices.begin(), edge_indices.end(), [&](uint & i) { i += edges_from; });
+
+			for (uint i = 0; i < edge_indices.size(); ++i)
+			{
+				const uint lower_loop_border = (i == 0) ? read_from
+					: edge_indices[i - 1] + (edge_indices[i] - edge_indices[i - 1]) / 2;
+				const uint upper_loop_border = (i + 1 == edge_indices.size()) ? read_to
+					: (edge_indices[i] + (edge_indices[i + 1] - edge_indices[i]) / 2);
+				
+				//Note: incorrect in case of read_step > 1
+				const uint middle_index = std::abs(int(lower_loop_border) - int(edge_indices[i]));
+
+				loops.push_back(Loop(lower_loop_border, upper_loop_border, middle_index));
+			}
 		}
 
 		if (loops.size() != middle_frames.size())
@@ -94,7 +130,7 @@ private:
 			loops[i].middle_transformation = icp_t[i] * sac_t[i];
 		}
 	}
-	
+
 	void process_all_loops()
 	{
 		for (uint i = 0; i < loops.size(); ++i)
@@ -149,11 +185,11 @@ private:
 		filters.filter(inner_frames);
 
 		ParallelRegistration<SaCRegistration> parallel_sac(this, settings);
-		parallel_sac.setInput(inner_frames, inner_frames.size() / 2, result_loop.middle_transformation);
+		parallel_sac.setInput(inner_frames, loop.middle_index, result_loop.middle_transformation);
 		const Matrix4fVector sac_t = parallel_sac.align(transformed_inner_frames);
 
 		ParallelRegistration<ICPRegistration> parallel_icp(this, settings);
-		parallel_icp.setInput(transformed_inner_frames, inner_frames.size() / 2, Eigen::Matrix4f::Identity());
+		parallel_icp.setInput(transformed_inner_frames, loop.middle_index, Eigen::Matrix4f::Identity());
 		parallel_icp.setKeypoints(parallel_sac.getTransformedKeypoints());
 		const Matrix4fVector icp_t = parallel_icp.align(transformed_inner_frames);
 

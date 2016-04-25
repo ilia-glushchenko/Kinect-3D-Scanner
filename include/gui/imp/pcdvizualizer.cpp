@@ -290,6 +290,17 @@ void PcdVizualizer::plotCameraDistances(
 }
 
 
+void PcdVizualizer::spin(const uint & spin_time)
+{
+	if (!viewer)
+	{
+		throw std::runtime_error("PcdVizualizer::spin !viewer");
+	}
+
+	viewer->spinOnce(spin_time);
+}
+
+
 //---------------------------------------------------------------
 
 float PcdVizualizer::gaussian_pdf(const float & x, const float & u, const float & sigma) const
