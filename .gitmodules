@@ -1,0 +1,30 @@
+[submodule "third_party/eigen"]
+	path = third_party/eigen
+	url = git@github.com:RLovelett/eigen.git
+[submodule "third_party/boost"]
+	path = third_party/boost
+	url = git@github.com:boostorg/boost.git
+[submodule "third_party/pcl"]
+	path = third_party/pcl
+	url = git@github.com:PointCloudLibrary/pcl.git
+[submodule "third_party/OpenNI2"]
+	path = third_party/OpenNI2
+	url = git@github.com:occipital/OpenNI2.git
+[submodule "third_party/cpu_tsdf"]
+	path = third_party/cpu_tsdf
+	url = git@github.com:sdmiller/cpu_tsdf.git
+[submodule "third_party/VTK"]
+	path = third_party/VTK
+	url = git@github.com:Kitware/VTK.git
+[submodule "third_party/googletest"]
+	path = third_party/googletest
+	url = https://github.com/google/googletest
+[submodule "third_party/flann"]
+	path = third_party/flann
+	url = git@github.com:mariusmuja/flann.git
+[submodule "third_party/qhull"]
+	path = third_party/qhull
+	url = git@github.com:qhull/qhull.git
+[submodule "third_party/opencv-2.4.10"]
+	path = third_party/opencv-2.4.10
+	url = git@github.com:apc-llc/opencv-2.4.10.git
