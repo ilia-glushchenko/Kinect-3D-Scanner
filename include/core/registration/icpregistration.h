@@ -5,34 +5,31 @@
 
 #include "core/base/types.h"
 
-class ICPRegistration : public ScannerBase
-{
-	Q_OBJECT
+class ICPRegistration : public ScannerBase {
+    Q_OBJECT
 
 public:
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-	ICPRegistration(QObject *parent, QSettings* parent_settings);
+    ICPRegistration(QObject* parent, QSettings* parent_settings);
 
-	void setInput(
-		const KeypointsFrame & keypoints_frame_, 
-		const Eigen::Matrix4f & initial_transformation_
-	);
+    void setInput(
+        const KeypointsFrame& keypoints_frame_,
+        const Eigen::Matrix4f& initial_transformation_);
 
-	Eigen::Matrix4f align();
+    Eigen::Matrix4f align();
 
-	Eigen::Matrix4f getTransformation() const;
+    Eigen::Matrix4f getTransformation() const;
 
-	float getFitnessScore() const;
-	
+    float getFitnessScore() const;
+
 private:
-	KeypointsFrame  keypoints_frame;
-	Eigen::Matrix4f initial_transformation;
-	Eigen::Matrix4f result_t;
-	float fitness_score;
+    KeypointsFrame keypoints_frame;
+    Eigen::Matrix4f initial_transformation;
+    Eigen::Matrix4f result_t;
+    float fitness_score;
 
-	void calculate();
-
+    void calculate();
 };
 
 #endif // ICPREGISTRATION_H

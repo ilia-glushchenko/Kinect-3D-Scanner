@@ -1,987 +1,433 @@
 #include "io/openniinterface.h"
 
-#define WIDTH  640
-#define HEIGHT 480
+#include <QDir>
+#include <QtSerialPort/QSerialPortInfo>
 
-#define COLORMAP_TYPE_COLORED 0
-#define COLORMAP_TYPE_CODED   1
+#include <chrono>
+#include <thread>
+
+#define WIDTH 640
+#define HEIGHT 480
 
 #define INIT_PAUSE_TIME 2500
 
-
-OpenNiInterface::OpenNiInterface(QObject *parent, QSettings* parent_settings)
-	: ScannerBase(parent, parent_settings)
+OpenNiInterface::OpenNiInterface(QObject* parent, QSettings* parent_settings)
+    : ScannerBase(parent, parent_settings)
+    , max_frames_size(configs.value("OPENNI_SETTINGS/MAX_BUFFER_SIZE").toInt())
+    , record_stream(settings->value("STREAM_SETTINGS/ENABLE_STREAM_RECORDING").toBool())
+    , stream_from_record(settings->value("STREAM_SETTINGS/ENABLE_REPLAY_RECORD_STREAM").toBool())
+    , record_to_pcd_data(settings->value("STREAM_SETTINGS/ENABLE_CONVERT_TO_PCD").toBool())
+    , stream_undistortion(settings->value("STREAM_SETTINGS/ENABLE_UNDISTORTION").toBool())
+    , stream_bilateral(settings->value("STREAM_SETTINGS/ENABLE_BILATERAL_FILTER").toBool())
+    , device_inited(false)
+    , serial(new QSerialPort(this))
 {
-	stream_from_record	= false;
-	record_stream		= false;
-	stream_undistortion = false;
-	stream_bilateral	= false;
-	record_to_pcd_data	= false;
-
-	device_inited = false;
-	serial = new QSerialPort(this);
-
-	load_calibration_data();
+    load_calibration_data();
 }
 
 OpenNiInterface::~OpenNiInterface()
 {
-	shutdown_interface();
+    shutdown_interface();
 }
 
+void OpenNiInterface::clearDataFolder()
+{
+    const QString pcd_data_folder = QFileInfo(settings->fileName()).absolutePath()
+        + "/" + settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString();
 
-//###############################################################
+    QDir dir(pcd_data_folder);
+    while (!dir.exists()) {
+        dir.mkdir(".");
+    }
+
+    dir.setNameFilters(QStringList() << "*.*");
+    dir.setFilter(QDir::Files);
+    foreach (QString dirFile, dir.entryList()) {
+        dir.remove(dirFile);
+    }
+}
 
 void OpenNiInterface::load_calibration_data()
 {
-	calib_matrix = (CvMat*)cvLoad(
-		(QFileInfo(settings->fileName()).absolutePath() + "/" +
-		 settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" +
-		 settings->value("OPENNI_SETTINGS/CALIB_MATRIX_NAME").toString()).toStdString().c_str()
-	);
-	dist_coeffs = (CvMat*)cvLoad(
-		(QFileInfo(settings->fileName()).absolutePath() + "/" +
-		settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/" + 
-		settings->value("OPENNI_SETTINGS/DIST_COEFF_NAME").toString()).toStdString().c_str()
-	);
-}
+    const std::string calib_mat_path = (QFileInfo(settings->fileName()).absolutePath() + "/"
+                                           + settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/"
+                                           + configs.value("OPENNI_SETTINGS/CALIB_MATRIX_NAME").toString())
+                                           .toStdString();
 
+    const std::string dist_coeffs_path = (QFileInfo(settings->fileName()).absolutePath() + "/"
+                                             + settings->value("PROJECT_SETTINGS/CALIB_DATA_FOLDER").toString() + "/"
+                                             + configs.value("OPENNI_SETTINGS/DIST_COEFF_NAME").toString())
+                                             .toStdString();
+
+    if (boost::filesystem::exists(calib_mat_path) && boost::filesystem::exists(dist_coeffs_path)) {
+        calib_matrix = (CvMat*)cvLoad(calib_mat_path.c_str());
+        dist_coeffs = (CvMat*)cvLoad(dist_coeffs_path.c_str());
+    } else {
+        qDebug() << QString("Cannot load calibration data! \nCalib mat: %1 \nDist coeffs: %2")
+                        .arg(calib_mat_path.c_str())
+                        .arg(dist_coeffs_path.c_str())
+                        .toStdString()
+                        .c_str();
+    }
+}
 
 void OpenNiInterface::initialize_interface()
 {
-	if (device_inited == false) {
-		initialize();
-	}
+    if (!device_inited) {
+        qDebug() << "Initialization...";
+        QString openni_out_text = configs.value("OPENNI_SETTINGS/OUT_TEXT").toString();
+
+        openni::Status stat = openni::OpenNI::initialize();
+        if (stat != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Driver initializatioin failed");
+            return;
+        }
+
+        if (stream_from_record) {
+            QString filePath = QFileInfo(settings->fileName()).absolutePath() + "/"
+                + settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "/"
+                + configs.value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString();
+
+            if (!boost::filesystem::exists(filePath.toStdString()) || (device.open(filePath.toStdString().c_str()) != openni::STATUS_OK)) {
+                qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open recording!");
+                qDebug() << "Path:" << filePath;
+                return;
+            } else {
+                openni::PlaybackControl* pbc = device.getPlaybackControl();
+                pbc->setRepeatEnabled(configs.value("OPENNI_SETTINGS/REPEAT_RECORDING").toBool());
+                pbc->setSpeed(-1);
+            }
+        } else if (device.open(openni::ANY_DEVICE) != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open device!");
+            return;
+        }
+
+        device_inited = true;
+        qDebug() << QString("%1 %2").arg(openni_out_text).arg("Initialized successfully!");
+
+        if (device.setDepthColorSyncEnabled(true) != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't sync color and depth frames");
+        }
+
+        if (depthStream.create(device, openni::SENSOR_DEPTH) != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create a depth stream");
+        }
+        if (colorStream.create(device, openni::SENSOR_COLOR) != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create a color stream");
+        }
+
+        if (depthStream.start() != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a depth stream");
+        }
+        if (colorStream.start() != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a color stream");
+        }
+
+        if (device.setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR) != openni::STATUS_OK) {
+            qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't enable registration depth to color");
+        }
+
+        if (record_stream && !stream_from_record) {
+            const QString filePath = QFileInfo(settings->fileName()).absolutePath() + "/"
+                + settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "/"
+                + configs.value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString();
+
+            if (recorder.create(filePath.toStdString().c_str()) != openni::STATUS_OK) {
+                qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create recording!");
+            }
+
+            if (recorder.attach(colorStream) != openni::STATUS_OK) {
+                qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't attach color stream!");
+            }
+            if (recorder.attach(depthStream) != openni::STATUS_OK) {
+                qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't attach depth stream!");
+            }
+
+            if (recorder.start() != openni::STATUS_OK) {
+                qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start recorder!");
+            }
+        }
+
+        qDebug() << "Done!";
+    }
 }
 
 void OpenNiInterface::shutdown_interface()
 {
-	if (device_inited) {
-		shutdown();
-	}
-}
+    if (device_inited) {
+        qDebug() << "Shutdown...";
+        const QString openni_out_text = configs.value("OPENNI_SETTINGS/OUT_TEXT").toString();
 
+        if (record_stream) {
+            recorder.stop();
+            recorder.destroy();
+        }
+
+        depthStream.stop();
+        depthStream.destroy();
+
+        colorStream.stop();
+        colorStream.destroy();
+
+        device.close();
+        openni::OpenNI::shutdown();
+
+        device_inited = false;
+        qDebug() << QString("%1 %2").arg(openni_out_text).arg("Shutdown successful!");
+    }
+}
 
 void OpenNiInterface::start_stream()
 {
-	if (device_inited) {
-		stream();
-	}
+    if (record_to_pcd_data) {
+        qDebug() << "Clearing data folder...";
+        clearDataFolder();
+    }
+
+    uint frame_index = 0;
+
+    while (device_inited) {
+        take_one_frame(++frame_index);
+    }
 }
 
 void OpenNiInterface::start_rotation_stream()
 {
-	if (device_inited) {
-		rotate_and_take_images();
-	}
-}
+    if (isInit()) {
+        initialize_rotation();
+        qDebug() << "Rotate:" << configs.value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt();
+        rotate(configs.value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
 
+        start_stream();
+
+        qDebug() << "Return:" << -configs.value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt();
+        rotate(-1 * configs.value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
+        shutdown_rotation();
+    }
+}
 
 void OpenNiInterface::take_long_images()
 {
-	if (device_inited) {
-		rotate_and_take_optimized_images();
-	}
+    if (device_inited) {
+        frames.clear();
+        Frames().swap(frames);
+        initialize_rotation();
+
+        for (int i = 0; i < configs.value("LONG_IMAGE_SETTINGS/TO").toInt() && device_inited;
+             i += configs.value("LONG_IMAGE_SETTINGS/STEP").toInt()) {
+            rotate(i > 0 ? configs.value("LONG_IMAGE_SETTINGS/STEP").toInt() : 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(INIT_PAUSE_TIME));
+
+            qDebug() << i / configs.value("LONG_IMAGE_SETTINGS/STEP").toInt()
+                     << "/" << configs.value("LONG_IMAGE_SETTINGS/TO").toInt() / configs.value("LONG_IMAGE_SETTINGS/STEP").toInt();
+
+            frames.push_back(take_one_optimized_image(configs.value("LONG_IMAGE_SETTINGS/NUMBER").toInt()));
+        }
+
+        rotate(-1);
+        shutdown_rotation();
+        save_long_image_data();
+    }
 }
 
 void OpenNiInterface::take_one_long_image()
 {
-	if (device_inited) {
-		take_one_optimized_image(settings->value("OP_REC/NUMBER").toInt());
-	}
+    if (device_inited) {
+        frames.push_back(take_one_optimized_image(configs.value("LONG_IMAGE_SETTINGS/NUMBER").toInt()));
+    }
 }
 
 void OpenNiInterface::save_long_image_data()
 {
-	qDebug() << "Saving data...";
+    qDebug() << "Saving data...";
 
-	for (int i = 0; i < worldCoordsVector.size(); i++)
-	{
-		QString pcd_image_filename_pattern =
-			QFileInfo(settings->fileName()).absolutePath() + "/" +
-			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
-			settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
-		cv::imwrite(pcd_image_filename_pattern.arg(i).toStdString(), colorImagesMatVector[i]);
+    clearDataFolder();
 
-		PcdPtr point_cloud_ptr(new Pcd);
-		depth_map_to_point_cloud(i, point_cloud_ptr.get());
+    for (uint i = 0; i < frames.size(); ++i) {
+        frames[i]->save(i);
+    }
 
-		QString pcd_filename_pattern =
-			QFileInfo(settings->fileName()).absolutePath() + "/" +
-			settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
-			settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();
-		pclio::save_one_point_cloud(pcd_filename_pattern.arg(i), point_cloud_ptr);
-	}
-
-	qDebug() << "Done!";
+    qDebug() << "Done!";
 }
-
-
-//###############################################################
 
 bool OpenNiInterface::isInit()
 {
-	return device_inited;
+    return device_inited;
 }
 
-void OpenNiInterface::set_stream_from_record(bool value)
+OpenNiInterface::Frame::Ptr OpenNiInterface::take_one_frame(const uint& frame_index)
 {
-	stream_from_record = value;
+    Frame::Ptr frame(new Frame(colorStream, depthStream, settings, &configs));
+
+    if (stream_bilateral) {
+        apply_bilateral_filter(frame->world_coords);
+        frame->update_world_coords();
+    }
+
+    if (stream_undistortion) {
+        apply_undistortion(frame->world_coords);
+        frame->update_world_coords();
+
+        cv::Mat undist_mat; //Note: cv::undistort works only with empty out buffer
+        cv::undistort(frame->color_frame_mat, undist_mat, calib_matrix, dist_coeffs);
+        frame->color_frame_mat = undist_mat;
+    }
+
+    if (configs.value("ARUCO_SETTINGS/ENABLE_IN_STREAM").toBool()) {
+        std::vector<aruco::Marker> Markers;
+        ArUcoKeypointDetector aruco(this, settings);
+        aruco.getMarkersVector(frame->color_frame_mat, &Markers);
+    }
+
+    cv::imshow("Color", frame->color_frame_mat);
+    cv::imshow("Depth", frame->depth_frame_mat);
+    cv::waitKey(30);
+
+    if (frame_index > 15 && record_to_pcd_data) {
+        qDebug() << "Saving Frame" << frame_index - 15;
+        frame->save(frame_index - 15);
+    }
+
+    return frame;
 }
 
-void OpenNiInterface::set_record_stream(bool value)
+OpenNiInterface::Frame::Ptr OpenNiInterface::take_one_optimized_image(const uint& number)
 {
-	record_stream = value;
+    Frame::Ptr sum_frame(new Frame(colorStream, depthStream, settings, &configs));
+    std::vector<cv::Vec3f> counter_map(WIDTH * HEIGHT, cv::Vec3f(1, 1, 1));
+
+    for (uint i = 0; i < number; ++i) {
+        qDebug() << QString("%1/%2").arg(i + 1).arg(number);
+
+        Frame::Ptr tmp_frame(new Frame(colorStream, depthStream, settings, &configs));
+
+        for (uint y = 0; y < HEIGHT; ++y) {
+            for (uint x = 0; x < WIDTH; ++x) {
+                const uint index = x + y * WIDTH;
+
+                ++counter_map[index][0];
+                sum_frame->world_coords[index][0] += tmp_frame->world_coords[index][0];
+                ++counter_map[index][1];
+                sum_frame->world_coords[index][1] += tmp_frame->world_coords[index][1];
+
+                if (tmp_frame->world_coords[index][2] != 0) {
+                    ++counter_map[index][2];
+                    sum_frame->world_coords[index][2] += tmp_frame->world_coords[index][2];
+                }
+            }
+        }
+    }
+
+    for (uint y = 0; y < HEIGHT; ++y) {
+        for (uint x = 0; x < WIDTH; ++x) {
+            sum_frame->world_coords[x + y * WIDTH][0] /= counter_map[x + y * WIDTH][0];
+            sum_frame->world_coords[x + y * WIDTH][1] /= counter_map[x + y * WIDTH][1];
+            sum_frame->world_coords[x + y * WIDTH][2] /= counter_map[x + y * WIDTH][2];
+        }
+    }
+
+    sum_frame->update_world_coords();
+    cv::imshow(QString("DepthMap %1").arg(rand()).toStdString(), sum_frame->depth_frame_mat);
+
+    return sum_frame;
 }
-
-void OpenNiInterface::set_stream_undistortion(bool value)
-{
-	stream_undistortion = value;
-}
-
-void OpenNiInterface::set_stream_bilateral(bool value)
-{
-	stream_bilateral = value;
-}
-
-void OpenNiInterface::set_record_to_pcd(bool value)
-{
-	record_to_pcd_data = value;
-}
-
-
-//###############################################################
-
-void OpenNiInterface::initialize()
-{
-	using namespace openni;
-
-	qDebug() << "Initialization...";
-	QString openni_out_text = settings->value("OPENNI_SETTINGS/OUT_TEXT").toString();
-
-	rc = OpenNI::initialize();
-	if (rc != STATUS_OK) {
-		qDebug() << QString("%1 %2").arg(openni_out_text).arg("Driver initializatioin failed");
-		return;
-	}
-
-	if (stream_from_record) {
-		QString filePath =
-			QFileInfo(settings->fileName()).absolutePath() + "/" +
-			settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "/" +
-			settings->value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString();
-
-		if (tools::fileExists(filePath) == false) {
-			rc = STATUS_ERROR;
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open recording!");
-		}
-		else {
-			rc = device.open(filePath.toStdString().c_str());
-			PlaybackControl* pbc = device.getPlaybackControl();
-			pbc->setRepeatEnabled(settings->value("OPENNI_SETTINGS/REPEAT_RECORDING").toBool());
-			pbc->setSpeed(-1);
-		}
-	}
-	else if (rc == STATUS_OK) {
-		rc = device.open(ANY_DEVICE);
-		if (rc != STATUS_OK) {
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't open device!");
-		}
-	}
-	else
-	{
-		qDebug() << QString("%1 %2").arg(openni_out_text).arg("Driver initializatioin failed");
-		return;
-	}
-
-	if (rc == STATUS_OK) {
-		rc = device.setDepthColorSyncEnabled(true);
-		if (rc != STATUS_OK) {
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't sync color and depth frames");
-		}
-
-		rc = depthStream.create(device, SENSOR_DEPTH);
-		if (rc != STATUS_OK) {
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create a depth stream");
-		}
-
-		rc = colorStream.create(device, SENSOR_COLOR);
-		if (rc != STATUS_OK) {
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create a color stream");
-		}
-
-		rc = device.setImageRegistrationMode(IMAGE_REGISTRATION_DEPTH_TO_COLOR);
-		if (rc != STATUS_OK) {
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't enable registration depth to color");
-		}
-
-		rc = depthStream.start();
-		if (rc != STATUS_OK) {
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a depth stream");
-		}
-
-		rc = colorStream.start();
-		if (rc != STATUS_OK) {
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start a color stream");
-		}
-
-		if (record_stream && !stream_from_record) {
-			QString filePath =
-				QFileInfo(settings->fileName()).absolutePath() + "/" +
-				settings->value("PROJECT_SETTINGS/STREAM_DATA_FOLDER").toString() + "/" +
-				settings->value("OPENNI_SETTINGS/RECORDED_STREAM_FILE_NAME").toString();
-
-			rc = recorder.create(filePath.toStdString().c_str());
-
-			if (rc != STATUS_OK) {
-				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't create recording!");
-			}
-
-			rc = recorder.attach(colorStream);
-			if (rc != STATUS_OK) {
-				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't attach color stream!");
-			}
-
-			rc = recorder.attach(depthStream);
-			if (rc != STATUS_OK) {
-				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't attach depth stream!");
-			}
-
-			rc = recorder.start();
-			if (rc != STATUS_OK) {
-				qDebug() << QString("%1 %2").arg(openni_out_text).arg("Couldn't start recorder!");
-			}
-		}
-
-		if (rc == STATUS_OK) {
-			device_inited = true;
-			qDebug() << QString("%1 %2").arg(openni_out_text).arg("Initialized successfully!");
-		}
-	}
-
-	qDebug() << "Done!";
-}
-
-void OpenNiInterface::shutdown()
-{
-	using namespace openni;
-
-	qDebug() << "Shutdown...";
-	QString openni_out_text = settings->value("OPENNI_SETTINGS/OUT_TEXT").toString();
-
-	if (record_stream) {
-		recorder.stop();
-		recorder.destroy();
-	}
-
-	depthStream.stop();
-	depthStream.destroy();
-
-	colorStream.stop();
-	colorStream.destroy();
-
-	device.close();
-	OpenNI::shutdown();
-
-	device_inited = false;
-	qDebug() << QString("%1 %2").arg(openni_out_text).arg("Shutdown successful!");
-}
-
-
-void OpenNiInterface::stream()
-{
-	using namespace openni;
-	using namespace cv;
-
-	VideoFrameRef depthFrame;
-	VideoFrameRef colorFrame;
-
-	Mat depthFrameMat;
-	Mat colorFrameMat;
-
-	uint frame_index = 0;
-
-	while (true)
-	{
-		colorStream.readFrame(&colorFrame);
-		const RGB888Pixel* colorBuffer = (const RGB888Pixel*)colorFrame.getData();
-
-		colorFrameMat.create(colorFrame.getHeight(), colorFrame.getWidth(), CV_8UC3);
-		memcpy(
-			colorFrameMat.data,
-			colorBuffer,
-			3 * colorFrame.getHeight()*colorFrame.getWidth()*sizeof(uint8_t)
-		);
-
-		cvtColor(colorFrameMat, colorFrameMat, CV_BGR2RGB);
-
-		cv::Mat undist_image;
-		if (stream_undistortion)
-		{
-			cv::undistort(colorFrameMat, undist_image, calib_matrix, dist_coeffs);
-			colorFrameMat = undist_image;
-		}
-
-		imshow("Color", colorFrameMat);
-
-		//------------------------------------------------------
-
-		if (settings->value("ARUCO_SETTINGS/ENABLE_IN_STREAM").toBool())
-		{
-			std::vector<aruco::Marker> Markers;
-			ArUcoKeypointDetector aruco(this, settings);
-			aruco.getMarkersVector(colorFrameMat, &Markers);
-		}
-
-		//------------------------------------------------------
-
-		depthStream.readFrame(&depthFrame);
-		DepthPixel* src_depth_pixels = (DepthPixel*)depthFrame.getData();
-		depthpixels_to_cv_mat(&depthFrameMat, src_depth_pixels, COLORMAP_TYPE_CODED);
-
-		if (stream_undistortion)
-		{
-			DepthPixel* dest_depth_pixels = new DepthPixel[WIDTH*HEIGHT];
-			apply_undistortion_to_depthmap(src_depth_pixels, dest_depth_pixels);
-			src_depth_pixels = dest_depth_pixels;
-		}
-
-		if (stream_bilateral)
-		{
-			DepthPixel* dest_depth_pixels = new DepthPixel[WIDTH*HEIGHT];
-			apply_bilateral_filter(src_depth_pixels, dest_depth_pixels);
-			src_depth_pixels = dest_depth_pixels;
-		}
-
-		if (record_to_pcd_data)
-		{
-			++frame_index;
-
-			QString pcd_image_filename_pattern =
-				QFileInfo(settings->fileName()).absolutePath() + "/" +
-						  settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
-						  settings->value("READING_PATTERNS/POINT_CLOUD_IMAGE_NAME").toString();
-			imwrite(pcd_image_filename_pattern.arg(frame_index).toStdString(), colorFrameMat);
-
-			vector<cv::Vec3f> worldCoords;
-			depthpixels_to_world_coordinate(src_depth_pixels, &worldCoords);
-
-			worldCoordsVector.push_back(worldCoords);
-			colorImagesMatVector.push_back(colorFrameMat);
-
-			PcdPtr point_cloud_ptr(new Pcd);
-			depth_map_to_point_cloud(worldCoordsVector.size() - 1, point_cloud_ptr.get());
-
-			QString pcd_filename_pattern =
-				QFileInfo(settings->fileName()).absolutePath() + "/" +
-						  settings->value("PROJECT_SETTINGS/PCD_DATA_FOLDER").toString() + "/" +
-						  settings->value("READING_PATTERNS/POINT_CLOUD_NAME").toString();			
-			pclio::save_one_point_cloud(pcd_filename_pattern.arg(frame_index), point_cloud_ptr);
-
-			worldCoordsVector.pop_back();
-			colorImagesMatVector.pop_back();
-		}
-
-		DepthMap depth_map;
-		depthpixels_to_depthmap(src_depth_pixels, &depth_map);
-		show_depth_map(depth_map, "stream");
-
-		//--------------------------------------------
-		waitKey(30);
-		if (device_inited == false)
-			break;
-
-	}
-}
-
-void OpenNiInterface::take_one_image()
-{
-	using namespace cv;
-	using namespace openni;
-	using namespace std;
-
-	VideoFrameRef colorFrame;
-	VideoFrameRef depthFrame;
-
-	Mat depthFrameMat;
-	Mat colorFrameMat;
-
-	colorStream.readFrame(&colorFrame);
-	const RGB888Pixel* colorBuffer = (const RGB888Pixel*)colorFrame.getData();
-
-	colorFrameMat.create(
-		colorFrame.getHeight(),
-		colorFrame.getWidth(),
-		CV_8UC3
-	);
-	memcpy(
-		colorFrameMat.data,
-		colorBuffer,
-		3 * colorFrame.getHeight()*colorFrame.getWidth()*sizeof(uint8_t)
-	);
-
-	cvtColor(colorFrameMat, colorFrameMat, CV_BGR2RGB);
-
-	/*------------------------------------*/
-
-	depthStream.readFrame(&depthFrame);
-	DepthPixel* depthpixels = (DepthPixel*)depthFrame.getData();
-	DepthMap depthMap;
-
-	if (stream_bilateral) {
-		apply_bilateral_filter(depthpixels, depthpixels);
-	}
-
-	depthpixels_to_cv_mat(
-		&depthFrameMat, depthpixels, COLORMAP_TYPE_CODED, &depthMap
-	);
-
-	std::vector<cv::Vec3f> tmpWorldCoords;
-	depthpixels_to_world_coordinate(depthpixels, &tmpWorldCoords);
-	bufferWorldCoordsVector.push_back(tmpWorldCoords);
-
-	/*------------------------------------*/
-
-	bufferDepthMapVector.push_back(depthMap);
-
-	bufferColorImagesMatVector.push_back(colorFrameMat);
-	bufferDepthImagesMatVector.push_back(depthFrameMat);
-}
-
-void OpenNiInterface::take_one_optimized_image(int number)
-{
-	for (int i = 0; i < number; i++)
-	{
-		qDebug() << QString("%1/%2").arg(i + 1).arg(number);
-
-		take_one_image();
-
-		if (i == number - 1)
-		{
-			colorImagesMatVector.push_back(bufferColorImagesMatVector[0]);
-			depthImagesMatVector.push_back(bufferDepthImagesMatVector[0]);
-		}
-		if (i == 0)
-		{
-			worldCoordsVector.push_back(bufferWorldCoordsVector[0]);
-			depthMapVector.push_back(bufferDepthMapVector[0]);
-		}
-		else
-		{
-			int last_index = worldCoordsVector.size() - 1;
-
-			for (int y = 0; y < HEIGHT; y++)
-			{
-				for (int x = 0; x < WIDTH; x++)
-				{
-					int index = x + y * WIDTH;
-
-					double x_w = bufferWorldCoordsVector[0][index][0];
-					double y_w = bufferWorldCoordsVector[0][index][1];
-					double z_w = bufferWorldCoordsVector[0][index][2];
-
-					if (z_w != 0)
-					{
-						if (worldCoordsVector[last_index][index][2] != 0)
-						{
-							worldCoordsVector[last_index][index][2] += z_w;
-							worldCoordsVector[last_index][index][1] += y_w;
-							worldCoordsVector[last_index][index][0] += x_w;
-
-							worldCoordsVector[last_index][index][2] /= 2.0f;
-							worldCoordsVector[last_index][index][1] /= 2.0f;
-							worldCoordsVector[last_index][index][0] /= 2.0f;
-						}
-						else
-						{
-							worldCoordsVector[last_index][index][2] = z_w;
-							worldCoordsVector[last_index][index][1] = y_w;
-							worldCoordsVector[last_index][index][0] = x_w;
-						}
-					}
-
-					double z_d = bufferDepthMapVector[0][index];
-					if (z_d != 0)
-					{
-						if (depthMapVector[last_index][index] != 0)
-						{
-							depthMapVector[last_index][index] += z_d;
-							depthMapVector[last_index][index] /= 2.0f;
-						}
-						else
-						{
-							depthMapVector[last_index][index] = z_d;
-						}
-					}
-				}
-			}
-		}
-
-		bufferWorldCoordsVector.clear();
-		bufferDepthMapVector.clear();	
-		bufferColorImagesMatVector.clear();
-		bufferDepthImagesMatVector.clear();
-	}	
-
-	show_depth_map(depthMapVector[depthMapVector.size() - 1], QString("%1").arg(rand()));
-}
-
 
 void OpenNiInterface::initialize_rotation()
 {
-	serial->setPortName(
-		settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()
-	);
-	serial->setBaudRate(QSerialPort::Baud57600);
+    serial->setPortName(configs.value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString());
+    serial->setBaudRate(QSerialPort::Baud57600);
 
-	if (!serial->open(QIODevice::WriteOnly)) {
-		qDebug() << QObject::tr("Failed to open port %1, error: %2").arg(
-			settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()).arg(serial->errorString());
-		return;
-	}
+    if (!serial->open(QIODevice::WriteOnly)) {
+        qDebug() << QObject::tr("Failed to open port %1, error: %2")
+                        .arg(configs.value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString())
+                        .arg(serial->errorString());
+    }
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(INIT_PAUSE_TIME));
+    std::this_thread::sleep_for(std::chrono::milliseconds(INIT_PAUSE_TIME));
 }
 
 void OpenNiInterface::shutdown_rotation()
 {
-	serial->close();
+    serial->close();
 }
 
 void OpenNiInterface::rotate(int angle)
 {
-	QByteArray writeData = QByteArray::fromStdString(QString("%1\n").arg(angle).toStdString());
+    const QByteArray writeData = QByteArray::fromStdString(QString("%1\n").arg(angle).toStdString());
 
-	if (writeData.isEmpty()) {
-		qDebug() << QObject::tr(
-			"Either no data was currently available on the standard input for reading, or an error occurred for port %1, error: %2"
-			).arg(settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()).arg(serial->errorString());
-		return;
-	}
+    if (writeData.isEmpty()) {
+        qDebug() << QObject::tr(
+                        "Either no data was currently available on the standard input for reading, or an error occurred for port %1, error: %2")
+                        .arg(configs.value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString())
+                        .arg(serial->errorString());
+        return;
+    }
 
-	qint64 bytesWritten = serial->write(writeData);
+    const qint64 bytesWritten = serial->write(writeData);
 
-	if (bytesWritten == -1) {
-		qDebug() << QObject::tr("Failed to write the data to port %1, error: %2").arg(
-			settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()).arg(serial->errorString()
-			);
-		return;
-	}
-	else if (bytesWritten != writeData.size()) {
-		qDebug() << QObject::tr("Failed to write all the data to port %1, error: %2").arg(
-			settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()).arg(serial->errorString()
-			);
-		return;
-	}
-	else if (!serial->waitForBytesWritten(5000)) {
-		qDebug() << QObject::tr("Operation timed out or an error occurred for port %1, error: %2").arg(
-			settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()).arg(serial->errorString()
-			);
-		return;
-	}
+    if (bytesWritten == -1) {
+        qDebug() << QObject::tr("Failed to write the data to port %1, error: %2")
+                        .arg(configs.value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString())
+                        .arg(serial->errorString());
+    } else if (bytesWritten != writeData.size()) {
+        qDebug() << QObject::tr("Failed to write all the data to port %1, error: %2")
+                        .arg(configs.value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString())
+                        .arg(serial->errorString());
+    } else if (!serial->waitForBytesWritten(5000)) {
+        qDebug() << QObject::tr("Operation timed out or an error occurred for port %1, error: %2")
+                        .arg(configs.value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString())
+                        .arg(serial->errorString());
+    } else {
+        qDebug() << QObject::tr("Data successfully sent to port %1")
+                        .arg(configs.value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString());
+    }
 
-	qDebug() << QObject::tr("Data successfully sent to port %1").arg(
-		settings->value("OPENNI_SETTINGS/SERIAL_PORT_NAME").toString()
-	);
+    const QByteArray readData = serial->readAll();
+    qDebug() << "Read:" << readData.toStdString().c_str();
 }
 
-void OpenNiInterface::rotate_and_take_images()
+void OpenNiInterface::apply_undistortion(
+    std::vector<cv::Vec3f>& world_coords)
 {
-	initialize_rotation();
+    cv::Mat img(HEIGHT, WIDTH, CV_32FC1);
+    cv::Mat img_res(HEIGHT, WIDTH, CV_32FC1);
 
-	qDebug() << "Rotate:" << settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt();
-	rotate(settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
-	start_stream();
+    for (int y = 0; y < HEIGHT; y++) {
+        for (int x = 0; x < WIDTH; x++) {
+            img.at<float>(y, x) = world_coords[x + y * WIDTH][2];
+        }
+    }
 
-	qDebug() << "Return:" << -settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt();
-	rotate(-1 * settings->value("OPENNI_SETTINGS/ROTATION_ANGLE").toInt());
-	shutdown_rotation();	
-}
+    undistort(img, img_res, calib_matrix, dist_coeffs);
 
-void OpenNiInterface::rotate_and_take_optimized_images()
-{
-	initialize_rotation();
-	for (int i = 0; i < settings->value("OP_REC/TO").toInt(); i += settings->value("OP_REC/STEP").toInt())
-	{
-		if (i > 0)
-			rotate(settings->value("OP_REC/STEP").toInt());
-		else
-			rotate(0);
-		std::this_thread::sleep_for(std::chrono::milliseconds(INIT_PAUSE_TIME));
-		qDebug() << i / settings->value("OP_REC/STEP").toInt() 
-				 << "/" 
-				 << settings->value("OP_REC/TO").toInt() / settings->value("OP_REC/STEP").toInt();
-		take_one_optimized_image(settings->value("OP_REC/NUMBER").toInt());
-	}
-	rotate(-1);
-	shutdown_rotation();
-
-	save_long_image_data();
-}
-
-
-void OpenNiInterface::show_depth_map(DepthMap depthMap, QString title)
-{
-	using namespace std;
-	using namespace cv;
-	using namespace openni;
-
-	if (depthMap.empty())
-	{
-		qDebug() << "Error: DepthMap is empty!";
-		return;
-	}
-
-	Mat depthFrameMat;
-	depthFrameMat.create(Size(WIDTH, HEIGHT), CV_8UC3);
-
-	int x, y, i;
-	for (y = 0; y < HEIGHT; y++)
-		for (x = 0; x < WIDTH; x++)
-		{
-			i = x + y * WIDTH;
-
-			int val = depthMap[i];
-			int r = 0;
-			int g = 0;
-			int b = 0;
-
-			while (val > 2550)
-				val -= 2550 - 255;
-
-			if (val <= 255 * 2)		 //r >
-			{
-				val -= 255 * 1;
-				r = val;
-			}
-			else if (val <= 255 * 3) // g >
-			{
-				val -= 255 * 2;
-				r = 255;
-				g = val;
-			}
-			else if (val <= 255 * 5) // r <
-			{
-				val -= 255 * 4;
-				r = 255 - val;
-				g = 255;
-			}
-			else if (val <= 255 * 5) // b >
-			{
-				val -= 255 * 4;
-				g = 255;
-				b = val;
-			}
-			else if (val <= 255 * 6) // g <
-			{
-				val -= 255 * 5;
-				b = 255;
-				g = 255 - val;
-			}
-			else if (val <= 255 * 7) // r >
-			{
-				val -= 255 * 6;
-				b = 255;
-				r = val;
-			}
-			else if (val <= 255 * 8) // b <
-			{
-				val -= 255 * 7;
-				r = 255;
-				b = 255 - val;
-			}
-
-			depthFrameMat.at<Vec3b>(y, x)[0] = b;
-			depthFrameMat.at<Vec3b>(y, x)[1] = g;
-			depthFrameMat.at<Vec3b>(y, x)[2] = r;
-
-			i++;
-		}
-
-	imshow(QString("DepthMap %1").arg(title).toStdString(), depthFrameMat);
-}
-
-
-//###############################################################
-
-void OpenNiInterface::apply_undistortion_to_depthmap(
-	openni::DepthPixel* src_depth_pixels,
-	openni::DepthPixel* dest_depth_pixels
-	)
-{
-	cv::Mat img, img_res;
-	img_res.create(HEIGHT, WIDTH, CV_32FC1);
-	img.create(HEIGHT, WIDTH, CV_32FC1);
-
-	for (int y = 0; y < HEIGHT; y++)
-		for (int x = 0; x < WIDTH; x++)
-			img.at<float>(y, x) =
-			static_cast<float>(src_depth_pixels[x + y*WIDTH]);
-
-	undistort(img, img_res, calib_matrix, dist_coeffs);
-
-	for (int y = 0; y < HEIGHT; y++)
-		for (int x = 0; x < WIDTH; x++)
-			dest_depth_pixels[x + y*WIDTH] =
-			static_cast<uint16_t>(round(img_res.at<float>(y, x)));
+    for (int y = 0; y < HEIGHT; y++) {
+        for (int x = 0; x < WIDTH; x++) {
+            world_coords[x + y * WIDTH][2] = std::round(img_res.at<float>(y, x));
+        }
+    }
 }
 
 void OpenNiInterface::apply_bilateral_filter(
-	openni::DepthPixel* src_depth_pixels,
-	openni::DepthPixel* dest_depth_pixels
-	)
+    std::vector<cv::Vec3f>& world_coords)
 {
-	int d =
-		settings->value(
-		"OPENCV_BILATERAL_FILTER_SETTINGS/D"
-		).toInt();
-	double sigma_color =
-		settings->value(
-		"OPENCV_BILATERAL_FILTER_SETTINGS/SIGMA_COLOR"
-		).toDouble();
-	double sigma_space =
-		settings->value(
-		"OPENCV_BILATERAL_FILTER_SETTINGS/SIGMA_SPACE"
-		).toDouble();
+    const int d = configs.value("OPENCV_BILATERAL_FILTER_SETTINGS/D").toInt();
+    const double sigma_color = configs.value("OPENCV_BILATERAL_FILTER_SETTINGS/SIGMA_COLOR").toDouble();
+    const double sigma_space = configs.value("OPENCV_BILATERAL_FILTER_SETTINGS/SIGMA_SPACE").toDouble();
 
-	cv::Mat img, img_res;
-	img_res.create(HEIGHT, WIDTH, CV_32FC1);
-	img.create(HEIGHT, WIDTH, CV_32FC1);
+    cv::Mat img(HEIGHT, WIDTH, CV_32FC1);
+    cv::Mat img_res(HEIGHT, WIDTH, CV_32FC1);
 
-	for (int y = 0; y < HEIGHT; y++)
-		for (int x = 0; x < WIDTH; x++)
-			img.at<float>(y, x) =
-			static_cast<float>(src_depth_pixels[x + y*WIDTH]);
+    for (int y = 0; y < HEIGHT; y++) {
+        for (int x = 0; x < WIDTH; x++) {
+            img.at<float>(y, x) = world_coords[x + y * WIDTH][2];
+        }
+    }
 
-	bilateralFilter(img, img_res, d, sigma_color, sigma_space);
+    bilateralFilter(img, img_res, d, sigma_color, sigma_space);
 
-	for (int y = 0; y < HEIGHT; y++)
-		for (int x = 0; x < WIDTH; x++)
-			dest_depth_pixels[x + y*WIDTH] =
-			static_cast<uint16_t>(round(img_res.at<float>(y, x)));
-}
-
-
-//###############################################################
-
-void OpenNiInterface::depthpixels_to_world_coordinate(
-	openni::DepthPixel*     depthpixels,
-	std::vector<cv::Vec3f>* worldCoords
-	)
-{
-	for (int y = 0; y < HEIGHT; y++)
-	{
-		for (int x = 0; x < WIDTH; x++)
-		{
-			int index = x + y * WIDTH;
-			float worldX, worldY, worldZ;
-
-			openni::CoordinateConverter::convertDepthToWorld(
-				depthStream, x, y, depthpixels[index], &worldX, &worldY, &worldZ);
-
-			cv::Vec3f world_coord;
-			world_coord[0] = worldX;
-			world_coord[1] = worldY;
-			world_coord[2] = worldZ;
-
-			worldCoords->push_back(world_coord);
-		}
-	}
-}
-
-void OpenNiInterface::depthpixels_to_depthmap(
-	openni::DepthPixel* depthpixels,
-	DepthMap*   depthMap
-	)
-{
-	for (int y = 0; y < HEIGHT; y++)
-	{
-		for (int x = 0; x < WIDTH; x++)
-		{
-			int i = x + y * WIDTH;
-			depthMap->push_back(depthpixels[i]);
-		}
-	}
-}
-
-void OpenNiInterface::depthpixels_to_cv_mat(
-	cv::Mat* depthFrameMat,
-	openni::DepthPixel* depthpixels,
-	int colormap_type,
-	DepthMap* depthMap
-	)
-{
-	using namespace std;
-	using namespace cv;
-	using namespace openni;
-
-	depthFrameMat->create(Size(WIDTH, HEIGHT), CV_8UC3);
-
-	int maximal = 0, minimal = 10000;
-	for (int i = 0; i < HEIGHT*WIDTH; i++)
-	{
-		if (depthpixels[i] > maximal)
-			maximal = depthpixels[i];
-		if (depthpixels[i] != 0 && depthpixels[i] < minimal)
-			minimal = depthpixels[i];
-	}
-
-
-	int i;
-	for (int y = 0; y < HEIGHT; y++)
-	{
-		for (int x = 0; x < WIDTH; x++)
-		{
-			i = x + y * WIDTH;
-
-			int val = depthpixels[i];
-			if (depthMap != NULL)
-				depthMap->push_back(val);
-			i++;
-
-			int r = 0;
-			int g = 0;
-			int b = 0;
-
-			if (colormap_type == COLORMAP_TYPE_COLORED)
-			{
-				val = val / (maximal / (255 * 7));
-
-				if (val <= 255 * 2)		 //r >
-				{
-					val -= 255 * 1;
-					r = val;
-				}
-				else if (val <= 255 * 3) // g >
-				{
-					val -= 255 * 2;
-					r = 255;
-					g = val;
-				}
-				else if (val <= 255 * 5) // r <
-				{
-					val -= 255 * 4;
-					r = 255 - val;
-					g = 255;
-				}
-				else if (val <= 255 * 5) // b >
-				{
-					val -= 255 * 4;
-					g = 255;
-					b = val;
-				}
-				else if (val <= 255 * 6) // g <
-				{
-					val -= 255 * 5;
-					b = 255;
-					g = 255 - val;
-				}
-				else if (val <= 255 * 7) // r >
-				{
-					val -= 255 * 6;
-					b = 255;
-					r = val;
-				}
-				else if (val <= 255 * 8) // b <
-				{
-					val -= 255 * 7;
-					r = 255;
-					b = 255 - val;
-				}
-			}
-			else if (colormap_type == COLORMAP_TYPE_CODED)
-			{
-				int counter = 0;
-				int j = val;
-				while (j > 256)
-				{
-					j -= 256;
-					counter++;
-				}
-
-				b = val - (256 * counter) - 1;
-				g = counter - 1;
-				r = 0;
-			}
-
-			depthFrameMat->at<Vec3b>(y, x)[0] = b;
-			depthFrameMat->at<Vec3b>(y, x)[1] = g;
-			depthFrameMat->at<Vec3b>(y, x)[2] = r;
-		}
-	}
-}
-
-void OpenNiInterface::depth_map_to_point_cloud(
-	int image_index,
-	Pcd* point_cloud
-	)
-{
-	point_cloud->width  = WIDTH;
-	point_cloud->height = HEIGHT;
-	point_cloud->resize(WIDTH * HEIGHT);
-
-	for (int y = 0; y < HEIGHT; y++)
-	{
-		for (int x = 0; x < WIDTH; x++)
-		{
-			int index = x + y * WIDTH;
-
-			double z_val = worldCoordsVector[image_index][index][2];
-			if (z_val == 0) {
-				point_cloud->at(x, y).z = NAN;
-			} else {
-				point_cloud->at(x, y).z = z_val;
-			}
-
-			point_cloud->at(x, y).x = worldCoordsVector[image_index][index][0];
-			point_cloud->at(x, y).y = worldCoordsVector[image_index][index][1];
-
-			point_cloud->at(x, y).r = colorImagesMatVector[image_index].at<cv::Vec3b>(y, x)[2];
-			point_cloud->at(x, y).g = colorImagesMatVector[image_index].at<cv::Vec3b>(y, x)[1];
-			point_cloud->at(x, y).b = colorImagesMatVector[image_index].at<cv::Vec3b>(y, x)[0];
-		}
-	}
-}
-
-
-//###############################################################
-
-void  OpenNiInterface::slot_set_stream_from_record(int value)
-{
-	if (value == 0)
-		set_stream_from_record(false);
-	else
-		set_stream_from_record(true);
-}
-
-void  OpenNiInterface::slot_set_record_stream(int value)
-{
-	if (value == 0)
-		set_record_stream(false);
-	else
-		set_record_stream(true);
-}
-
-void  OpenNiInterface::slot_set_stream_undistortion(int value)
-{
-	if (value == 0)
-		set_stream_undistortion(false);
-	else
-		set_stream_undistortion(true);
-}
-
-void  OpenNiInterface::slot_set_stream_bilateral(int value)
-{
-	if (value == 0)
-		set_stream_bilateral(false);
-	else
-		set_stream_bilateral(true);
-}
-
-void  OpenNiInterface::slot_set_record_to_pcd(int value)
-{
-	if (value == 0)
-		set_record_to_pcd(false);
-	else
-		set_record_to_pcd(true);
+    for (int y = 0; y < HEIGHT; y++) {
+        for (int x = 0; x < WIDTH; x++) {
+            world_coords[x + y * WIDTH][2] = std::round(img_res.at<float>(y, x));
+        }
+    }
 }
