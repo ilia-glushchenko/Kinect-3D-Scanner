@@ -43,12 +43,12 @@ include_directories(
     ${aruco_INCLUDE_DIRS}/aruco
     ${CPUTSDF_INCLUDE_DIRS}
     ${OpenCV_INCLUDE_DIRS}
-    )
+)
 
 link_directories(
     ${PCL_LIBRARY_DIRS}
     ${OpenNi2_LIB_DIR}
-    )
+)
 
 set(SRC 
     ./include/core/base/imp/scannerbase.cpp
@@ -104,13 +104,13 @@ set(HEADERS
     ./include/io/pclio.h
     ./include/utility/pcdfilters.h
     ./include/utility/tools.h
-    )
+)
 
 
 add_executable (RoomScanner
     ${SRC}
     ${HEADERS}
-    )
+)
 
 target_link_libraries (RoomScanner
     ${OpenCV_LIBS}
@@ -121,7 +121,7 @@ target_link_libraries (RoomScanner
     ${CPUTSDF_LIBRARIES}
     ${aruco_LIBS}
     ${OpenNi2_LIBS}
-    )
+)
 
 
 
