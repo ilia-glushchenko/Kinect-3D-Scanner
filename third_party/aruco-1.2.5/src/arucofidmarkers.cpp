@@ -30,6 +30,8 @@ or implied, of Rafael Muñoz Salinas.
 #include "arucofidmarkers.h"
 #include <cstdio>
 #include <opencv2/imgproc/imgproc.hpp>
+#include "opencv2/flann/random.h"
+
 using namespace cv;
 using namespace std;
 namespace aruco {
@@ -495,7 +497,7 @@ vector<int> FiducidalMarkers::getListOfValidMarkersIds_random(int nMarkers,vecto
         for (size_t i=0;i<excluded->size();i++)
             listOfMarkers[excluded->at(i)]=-1;
 //random shuffle
-    random_shuffle(listOfMarkers.begin(),listOfMarkers.end());
+    std::random_shuffle(listOfMarkers.begin(),listOfMarkers.end());
 //now, take the first  nMarkers elements with value !=-1
     int i=0;
     vector<int> retList;

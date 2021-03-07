@@ -33,7 +33,7 @@ if(WIN32)
     SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin CACHE PATH "Directory for dlls")
 else()
     # Postfix of so's:
-    set(PROJECT_DLLVERSION)   
+    set(PROJECT_DLLVERSION)
 #    SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_INSTALL_PREFIX}/lib/cmake/ /usr/lib/cmake)
 endif()
 
@@ -44,12 +44,15 @@ OPTION(BUILD_SHARED_LIBS 	"Set to OFF to build static libraries" ON)
 #   Find Dependencies
 # ----------------------------------------------------------------------------
 
-FIND_PACKAGE(OpenCV 	REQUIRED )
-set (REQUIRED_LIBRARIES ${OpenCV_LIBS})
-
+find_package(OpenCV CONFIG REQUIRED QUIET)
+set(REQUIRED_LIBRARIES
+    opencv_ml
+    opencv_ts
+    opencv_gpu
+    opencv_ocl)
 
 IF(EXISTS ${GLUT_PATH})
-    INCLUDE_DIRECTORIES(${GLUT_PATH}/include)
+    INCLUDE_DIRECTORIES(${GLUT_PATH}/include ${OpenCV_INCLUDE_DIRS})
     SET(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} ${GLUT_PATH}/lib)
 ENDIF()
 
@@ -74,42 +77,11 @@ ENDIF()
 #Omp
 
 if(WIN32)
- 
+
 ELSE()
   add_definitions(-DUSE_OMP -fopenmp)
   set (REQUIRED_LIBRARIES ${REQUIRED_LIBRARIES} -lgomp)
 ENDIF()
-
-# ----------------------------------------------------------------------------
-#   PROJECT CONFIGURATION
-#   force some variables that could be defined in the command line to be written to cache
-# ----------------------------------------------------------------------------
-OPTION(INSTALL_DOC 	"Set to ON to build/install Documentation" OFF)
-IF (INSTALL_DOC)
-    FIND_PACKAGE(Doxygen REQUIRED)
-    MESSAGE( STATUS "INSTALL_DOC:         ${INSTALL_DOC} ")
-    INCLUDE("${PROJECT_SOURCE_DIR}/generateDoc.cmake")
-    GENERATE_DOCUMENTATION(${PROJECT_SOURCE_DIR}/dox.in)
-ENDIF()
-
-
-
-
-# ----------------------------------------------------------------------------
-#   Uninstall target, for "make uninstall"
-# ----------------------------------------------------------------------------
-CONFIGURE_FILE( "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake" IMMEDIATE @ONLY)
-ADD_CUSTOM_TARGET(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
-
-# ----------------------------------------------------------------------------
-# create configuration file from .in file (If you use windows take care with paths)
-# ----------------------------------------------------------------------------
-
-CONFIGURE_FILE("${PROJECT_SOURCE_DIR}/config.cmake.in" "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake")
-INSTALL(FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake" DESTINATION share/${PROJECT_NAME}/ )
-
-
-
 
 # ----------------------------------------------------------------------------
 #   Program Optimization and debug (Extracted from OpenCV)
@@ -230,75 +202,7 @@ IF(CMAKE_COMPILER_IS_GNUCXX OR MINGW)
     SET(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${EXTRA_EXE_LINKER_FLAGS_DEBUG}")
 ENDIF	()
 
-# ----------------------------------------------------------------------------
-#   PACKAGE GENERATOR
-# ----------------------------------------------------------------------------
-
-IF (UNIX)
-SET(CPACK_GENERATOR "DEB")
-SET(CPACK_PACKAGE_CONTACT "rmsalinas@uco.es")
-SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "rmsalinas@uco.es")
-SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ArUco Library")
-SET(CPACK_PACKAGE_VENDOR "Rafael Munoz-Salinas. AVA Group. University of Cordoba. Spain")
-SET(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
-SET(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
-SET(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
-SET(CPACK_PACKAGE_INSTALL_DIRECTORY "CMake ${CMake_VERSION_MAJOR}.${CMake_VERSION_MINOR}")
-SET(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-SET(CPACK_STRIP_FILES "bin/lib${PROJECT_NAME}")
-SET(CPACK_SOURCE_STRIP_FILES "")
-SET(CPACK_PACKAGING_INSTALL_PREFIX "/usr/")
-IF (CPACK_GENERATOR STREQUAL "DEB")
-    SET(CPACK_DEBIAN_PACKAGE_DEPENDS "opencv (>= 2.1.0)")
-ENDIF()
-INCLUDE(CPack)
-ENDIF()
-
 #------------------------------------------------
 # DIRS
 #------------------------------------------------
 ADD_SUBDIRECTORY(src)
-IF(NOT ANDROID_CREATION)
-  ADD_SUBDIRECTORY(utils)
-  ADD_SUBDIRECTORY(utils_hrm)
-ENDIF()
-
-
-
-# ----------------------------------------------------------------------------
-# display status message for important variables
-# ----------------------------------------------------------------------------
-message( STATUS )
-MESSAGE( STATUS "-------------------------------------------------------------------------------" )
-message( STATUS "General configuration for ${PROJECT_NAME} ${PROJECT_VERSION}")
-MESSAGE( STATUS "-------------------------------------------------------------------------------" )
-message( STATUS )
-message("    Built as dynamic libs?:" ${BUILD_SHARED_LIBS})
-message("    Compiler:"                   "${CMAKE_COMPILER}"   "${CMAKE_CXX_COMPILER}")
-message( STATUS "C++ flags (Release):       ${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_RELEASE}")
-message( STATUS "C++ flags (Debug):         ${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_DEBUG}")
-message( STATUS "CMAKE_CXX_FLAGS:         ${CMAKE_CXX_FLAGS}")
-message( STATUS "CMAKE_BINARY_DIR:         ${CMAKE_BINARY_DIR}")
-
-MESSAGE( STATUS )
-MESSAGE( STATUS "CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}" )
-MESSAGE( STATUS "BUILD_SHARED_LIBS = ${BUILD_SHARED_LIBS}" )
-MESSAGE( STATUS "CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}" )
-MESSAGE( STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}" )
-MESSAGE( STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}" )
-
-MESSAGE( STATUS )
-MESSAGE( STATUS "---------------------------     Documentation     -----------------------------" )
-MESSAGE( STATUS )
-MESSAGE( STATUS "INSTALL_DOC = ${INSTALL_DOC}" )
-MESSAGE( STATUS "USE_LATEX = ${USE_LATEX}" )
-MESSAGE( STATUS "USE_DOT = ${USE_DOT}" )
-MESSAGE( STATUS "USE_CHM = ${USE_CHM}" )
-MESSAGE( STATUS )
-MESSAGE( STATUS "FOUND OPENGL=${GL_FOUND}    LIBS=${OPENGL_LIBS}")
-MESSAGE( STATUS "OpenCV_LIB_DIR=${OpenCV_LIB_DIR}")
-MESSAGE( STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}")
-MESSAGE( STATUS )
-MESSAGE( STATUS )
-MESSAGE( STATUS "Change a value with: cmake -D<Variable>=<Value>" )
-MESSAGE( STATUS )
