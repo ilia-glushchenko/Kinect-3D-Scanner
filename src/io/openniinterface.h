@@ -94,50 +94,28 @@ public:
         {
             cv::Mat depthFrameMat(cv::Size(WIDTH, HEIGHT), CV_8UC3);
 
-            for (int y = 0; y < HEIGHT; y++) {
-                for (int x = 0; x < WIDTH; x++) {
+            int min_depth = INT_MAX;
+            int max_depth = INT_MIN;
+
+            for (int y = 0; y < HEIGHT; y++) 
+            {
+                for (int x = 0; x < WIDTH; x++) 
+                {
+                    int const val = world_coords[x + y * WIDTH][2];
+                    min_depth = std::min(min_depth, val);
+                    max_depth = std::max(max_depth, val);
+                }
+            }            
+            
+            for (int y = 0; y < HEIGHT; y++) 
+            {
+                for (int x = 0; x < WIDTH; x++) 
+                {
                     int val = world_coords[x + y * WIDTH][2];
+                    
                     int r = 0, g = 0, b = 0;
-
-                    while (val > 2550) {
-                        val -= 2550 - 255;
-                    }
-
-                    if (val <= 255 * 2) //r >
-                    {
-                        val -= 255 * 1;
-                        r = val;
-                    } else if (val <= 255 * 3) // g >
-                    {
-                        val -= 255 * 2;
-                        r = 255;
-                        g = val;
-                    } else if (val <= 255 * 5) // r <
-                    {
-                        val -= 255 * 4;
-                        r = 255 - val;
-                        g = 255;
-                    } else if (val <= 255 * 5) // b >
-                    {
-                        val -= 255 * 4;
-                        g = 255;
-                        b = val;
-                    } else if (val <= 255 * 6) // g <
-                    {
-                        val -= 255 * 5;
-                        b = 255;
-                        g = 255 - val;
-                    } else if (val <= 255 * 7) // r >
-                    {
-                        val -= 255 * 6;
-                        b = 255;
-                        r = val;
-                    } else if (val <= 255 * 8) // b <
-                    {
-                        val -= 255 * 7;
-                        r = 255;
-                        b = 255 - val;
-                    }
+                    int color = static_cast<int>(float(val - min_depth) / float(max_depth - min_depth) * 255.f);
+                    r = g = b = color;
 
                     depthFrameMat.at<cv::Vec3b>(y, x)[0] = b;
                     depthFrameMat.at<cv::Vec3b>(y, x)[1] = g;
