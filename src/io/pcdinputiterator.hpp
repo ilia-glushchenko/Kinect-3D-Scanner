@@ -153,8 +153,7 @@ private:
         for (auto& p : boost::filesystem::directory_iterator(root))
         {
             const bool is_regular_file = boost::filesystem::is_regular_file(p.path());
-            const auto str = p.path().string();
-            const bool same_extension = QFileInfo(str.c_str()).completeSuffix().toStdString() == ext;
+            const bool same_extension = p.path().extension() == ext;
             if (is_regular_file && same_extension)
             {
                 ret.push_back(p.path().filename());
