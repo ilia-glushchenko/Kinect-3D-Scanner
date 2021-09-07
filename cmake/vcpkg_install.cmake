@@ -10,13 +10,9 @@ set(VCPKG_LIB
     $ENV{VCPKG_ROOT}\\installed\\${VCPKG_TARGET_TRIPLET}\\lib)
 
 set(VCPKG_PACKAGES
-    qt5
-    qt5-serialport
+    qt5[serialport]
     opencv2
-    qhull
-    pcl[vtk]
-    pcl[openni2]
-    pcl)
+    pcl[opengl,openni2,qt,vtk])
 
 set(CMAKE_TOOLCHAIN_FILE
     "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"

@@ -17,6 +17,7 @@ include(room_scanner_config)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
+find_package(Qhull CONFIG REQUIRED)
 find_package(Qt5 COMPONENTS Widgets Core CONFIG REQUIRED QUIET)
 find_package(OpenCV CONFIG REQUIRED QUIET)
 find_package(Qt5SerialPort CONFIG REQUIRED QUIET)
@@ -29,6 +30,7 @@ include(aruco_config)
 #Executable
 add_executable (RoomScanner ${ROOM_SCANNER_SRC})
 include_directories("src/")
+target_include_directories(RoomScanner SYSTEM PUBLIC ${ARUCO_INCLUDE_DIR})
 include_directories(SYSTEM
     ${ARUCO_INCLUDE_DIR}
     ${CPU_TSDF_INCLUDE_DIR}
@@ -43,6 +45,7 @@ target_link_libraries (RoomScanner PRIVATE
     Qt5::SerialPort
     cpu_tsdf
     aruco
+    Qhull::qhullcpp
 )
 
 # Create symlink for assets
