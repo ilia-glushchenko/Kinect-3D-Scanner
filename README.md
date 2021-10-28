@@ -29,23 +29,23 @@ I use git bash and gonna write all of the commands in it.
 # How to use it?
 1) First let's connect your Kinect to the PC. (If you don't want to just keep reading, you can replay and record streams from virtual Kinect, cool yeah, I know. I am also gonna attach some sample streams, if there is no way you can get your hands on one of those Kinects anymore.)
 
-2) The next step is to create a new project by pushing `Make Project` and a new project directory.
+2) The next step is to create a new project by clicking `Make Project`. It will create a new project directory.
 
 
 ![image](https://user-images.githubusercontent.com/14330873/110510455-401e7900-8114-11eb-8d2d-6eb8f31a4276.png)
 
 
-3) Then let's open it by pushing `Open Project` and selecting `project.ini` inside our new project folder.
+3) Let's open it by clicking `Open Project` and selecting `project.ini` inside our new project folder.
 
 4) You'll be presented with 2 windows. It's a point cloud viewer and control ui window. It might look like there is a lot of stuff. But generally what you are interested `Start Stream` button, `Record stream`, `Replay recorded stream` checkboxes. You can start streaming from your Kinect by pressing `Start Stream`. You can record it if you checked `Record stream`. You can **replay** streams if you uncheck `Record stream` and check `Replay recorded stream` (Be careful there are no clever "foolproof" checkbox checks inside the app). 
 ![image](https://user-images.githubusercontent.com/14330873/110510899-b6bb7680-8114-11eb-8273-f58885620cb0.png)
 
-5) Once you start the stream you'll be presented with two more windows. That contains the RGB and depth data. Notice how `Start Stream` button became `Stop Stream`. That's the one you want to press to properly shut down the device and save your streams. 
+5) Once you start the stream you'll be presented with two more windows. That contains the RGB and depth data. Notice how `Start Stream` button became `Stop Stream`. That's the one you want to click to properly shut down the device and save your streams. 
 ![image](https://user-images.githubusercontent.com/14330873/110533842-761d2680-812f-11eb-8a3b-a790fdc8910b.png)
 
-6) To convert the ONI stream to point clouds for the reconstruction you will need to check `Save Stream as PCD` checkbox, before starting the stream. You can do that from the replayed stream, there is no difference for the application.
+6) To perform reconstruction you'll need to convert native OpenNI \*.ONI stream file into PCL compatible \*.PCD files. To do that check `Save Stream as PCD` checkbox, before starting the stream. You can do that from the replayed stream, there is no difference for the application.
 
-7) When you have saved point clouds. You can press the final button `Perform Reconstruction`. To register (align) point clouds and then triangulate them using the TSDF algorithm. 
+7) When you have saved your point clouds. You can click the final button `Perform Reconstruction`. To register (align) point clouds and then triangulate them using the TSDF algorithm. 
 
 To be continued...
 
